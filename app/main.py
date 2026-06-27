@@ -8,6 +8,7 @@ app = FastAPI()
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+print(f"Running FastAPI server. Upload directory: {UPLOAD_DIR}      ")
 
 @app.get("/")
 def root():
