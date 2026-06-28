@@ -3,6 +3,11 @@ from fastapi.responses import JSONResponse
 import shutil
 import os
 
+try:
+    from app.validation import validate_fields
+except ModuleNotFoundError:
+    from validation import validate_fields
+
 app = FastAPI()
 
 UPLOAD_DIR = "uploads"
@@ -27,19 +32,11 @@ async def verify_label(
         shutil.copyfileobj(file.file, buffer)
 
     # --- Placeholder OCR (replace later) ---
-    extracted_text = "OLD TOM DISTILLERY 45% ALC/VOL 750 ML"
+    with open("tests/data/label_text.txt") as f:
+        extracted_text = f.read()
 
-    results = []
-
-    if brand_name.lower() in extracted_text.lower():
-        results.append({"field": "brand_name", "status": "pass"})
-    else:
-        results.append({"field": "brand_name", "status": "fail"})
-
-    if abv in extracted_text:
-        results.append({"field": "abv", "status": "pass"})
-    else:
-        results.append({"field": "abv", "status": "fail"})
+    #validation tests
+    results = validate_fields(brand_name, abv, extracted_text)
 
     return JSONResponse({
         "extracted_text": extracted_text,
