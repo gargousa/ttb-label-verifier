@@ -20,6 +20,10 @@ def root():
     return {"message": "Alcohol Label Verification API is running"}
 
 
+@app.get("/verify")
+def verify_info():
+    return {"message": "Use POST method with form-data to verify labels"}
+
 @app.post("/verify")
 async def verify_label(
     brand_name: str = Form(...),

@@ -1,7 +1,15 @@
 import requests
 import sys
+import argparse
+import time
+import urllib3
 
-URL = "http://127.0.0.1:8000/verify"
+
+URL_LOCAL = "http://127.0.0.1:8000/verify"
+URL_RENDER = "https://ttb-label-verifier.onrender.com/verify"
+
+#Choose the Testing URL based
+URL=URL_RENDER
 
 TEST_IMAGE = "tests/images/test_label_stb.jpg"
 APPLICATION_TEXT_FILE = "tests/data/label_text.txt"
@@ -34,7 +42,7 @@ TEST_CASES = [
 ]
 
 
-def run_test_case(test_case):
+def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries):
     print(f"\n=== {test_case['name']} ===")
 
     with open(test_case["file"]) as f:
@@ -52,13 +60,37 @@ def run_test_case(test_case):
         files = {
             "file": ("test.jpg", image_file, "image/jpeg")
         }
-        response = requests.post(URL, data=data, files=files)
+        response = None
+        last_error = None
+
+        for attempt in range(1, retries + 1):
+            try:
+                response = requests.post(
+                    url,
+                    data=data,
+                    files=files,
+                    timeout=timeout_seconds,
+                    verify=verify_ssl,
+                )
+                break
+            except requests.exceptions.RequestException as exc:
+                last_error = exc
+                if attempt < retries:
+                    print(f"Retrying ({attempt}/{retries - 1}) after request error...")
+                    time.sleep(2)
+
+        if response is None:
+            print(f"❌ Request error: {last_error}")
+            return False
 
     print(f"Input brand: {brand_name}")
     print(f"Input ABV: {abv}")
 
     if response.status_code != 200:
-        print("❌ Request failed:", response.status_code)
+        print(f"❌ Request failed: {response.status_code} for {response.url}")
+        body_preview = (response.text or "").strip().replace("\n", " ")[:180]
+        if body_preview:
+            print(f"   Response: {body_preview}")
         return False
 
     result = response.json()
@@ -98,13 +130,47 @@ def print_application_data():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run label verification test cases")
+    parser.add_argument(
+        "--url",
+        default=URL,
+        help="Verification endpoint URL (default: local API)",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=90,
+        help="Request timeout in seconds (default: 90, useful for Render cold starts)",
+    )
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=2,
+        help="Number of attempts per test case for transient failures (default: 2)",
+    )
+    parser.add_argument(
+        "--insecure",
+        action="store_true",
+        help="Disable TLS certificate verification (only for trusted test environments)",
+    )
+    args = parser.parse_args()
+
+    verify_ssl = not args.insecure
+    if not verify_ssl:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    print(f"Endpoint: {args.url}")
+    print(f"Timeout: {args.timeout}s")
+    print(f"Retries: {args.retries}")
+    print(f"TLS verify: {verify_ssl}")
+
     passed = 0
     failed = 0
 
     print_application_data()
 
     for case in TEST_CASES:
-        if run_test_case(case):
+        if run_test_case(case, args.url, args.timeout, verify_ssl, args.retries):
             passed += 1
         else:
             failed += 1
