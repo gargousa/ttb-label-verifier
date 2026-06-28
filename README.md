@@ -8,3 +8,16 @@ This application is deployed on Render for ease of evaluation.
 All OCR and validation logic runs locally within the application process and does not require outbound network access. This allows the solution to be deployed in restricted environments where outbound traffic is blocked.
 
 Note: The free-tier deployment may incur a 30–60 second cold start after inactivity.
+
+
+## Testing
+
+Run tests locally:
+
+	python -m venv .venv
+	.venv\Scripts\Activate.ps1
+	python -m pip install -r requirements.txt
+	python -m pytest -v
+
+Note: the application does not execute the test suite when the API starts.
+Tests are run separately with pytest (or automatically in CI on push/PR).
