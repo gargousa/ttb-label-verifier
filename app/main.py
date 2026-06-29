@@ -1,19 +1,23 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 import shutil
 import os
+from pathlib import Path
 
 try:
     from app.validation import validate_fields, get_supported_checks, get_missing_fields
     from app.ocr import extract_text_from_image
+    from app.test_runner import run_local_test_cases
 except ModuleNotFoundError:
     from validation import validate_fields, get_supported_checks, get_missing_fields
     from ocr import extract_text_from_image
+    from test_runner import run_local_test_cases
 
 app = FastAPI()
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+TEST_UI_FILE = Path(__file__).resolve().parent / "templates" / "tests_ui.html"
 
 print(f"Running FastAPI server. Upload directory: {UPLOAD_DIR}      ")
 
@@ -30,6 +34,18 @@ def verify_info():
 @app.get("/checks")
 def checks_info():
     return {"supported_checks": get_supported_checks()}
+
+
+@app.get("/tests/ui", response_class=HTMLResponse)
+def tests_ui():
+    return TEST_UI_FILE.read_text(encoding="utf-8")
+
+
+@app.post("/tests/ui/run")
+def tests_ui_run(payload: dict | None = None):
+    payload = payload or {}
+    image_path = payload.get("image_path")
+    return run_local_test_cases(image_path=image_path)
 
 @app.post("/verify")
 async def verify_label(
