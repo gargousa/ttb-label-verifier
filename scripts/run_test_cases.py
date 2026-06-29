@@ -25,7 +25,7 @@ URL_LOCAL = "http://127.0.0.1:8000/verify"
 URL_RENDER = "https://ttb-label-verifier-edgk.onrender.com/verify"
 
 #Choose the Testing URL based
-URL=URL_LOCAL
+URL=URL_RENDER
 
 LOCAL_TEST_IMAGE = "tests/images/test_label_stb.jpg"
 REMOTE_TEST_IMAGE = "tests/images/test_label_stb.jpg"

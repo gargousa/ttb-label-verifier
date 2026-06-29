@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Label Verifier Test Runner</title>
+    <style>
+        body { font-family: Segoe UI, Arial, sans-serif; max-width: 1000px; margin: 24px auto; padding: 0 16px; }
+        button { padding: 10px 14px; font-size: 14px; cursor: pointer; }
+        .row { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+        .summary { margin: 14px 0; font-weight: 600; }
+        .ok { color: #0a7f3f; }
+        .bad { color: #b42318; }
+        pre { background: #f6f8fa; padding: 12px; border-radius: 8px; white-space: pre-wrap; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; text-align: left; }
+        th { background: #f3f4f6; }
+    </style>
+</head>
+<body>
+    <h1>Test Runner</h1>
+    <div class="row">
+        <label for="imagePath">Image path:</label>
+        <input id="imagePath" type="text" value="tests/images/test_label_stb.jpg" style="flex:1; padding: 8px;" />
+        <button id="runBtn">Run Test Cases</button>
+    </div>
+    <div id="summary" class="summary"></div>
+    <h3>Extracted Text</h3>
+    <pre id="extracted">(not run yet)</pre>
+    <h3>Case Results</h3>
+    <table>
+        <thead>
+            <tr><th>Case</th><th>Status</th><th>Mismatches</th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+    </table>
+
+    <script>
+        const btn = document.getElementById('runBtn');
+        const summary = document.getElementById('summary');
+        const extracted = document.getElementById('extracted');
+        const rows = document.getElementById('rows');
+
+        async function runTests() {
+            btn.disabled = true;
+            btn.textContent = 'Running...';
+            summary.textContent = '';
+            rows.innerHTML = '';
+
+            try {
+                const imagePath = document.getElementById('imagePath').value.trim();
+                const resp = await fetch('/tests/ui/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image_path: imagePath })
+                });
+                const data = await resp.json();
+
+                if (!data.ok) {
+                    summary.innerHTML = `<span class="bad">Failed: ${data.error}</span>`;
+                    extracted.textContent = '(no extracted text)';
+                    return;
+                }
+
+                summary.innerHTML = `Passed: <span class="ok">${data.passed}</span> | Failed: <span class="bad">${data.failed}</span>`;
+                extracted.textContent = data.extracted_text || '(empty)';
+
+                for (const c of data.cases) {
+                    const tr = document.createElement('tr');
+                    const mismatches = c.mismatches.length ? c.mismatches.join('\n') : '-';
+                    tr.innerHTML = `
+                        <td>${c.name}</td>
+                        <td class="${c.passed ? 'ok' : 'bad'}">${c.passed ? 'PASS' : 'FAIL'}</td>
+                        <td><pre style="margin:0;">${mismatches}</pre></td>
+                    `;
+                    rows.appendChild(tr);
+                }
+            } catch (err) {
+                summary.innerHTML = `<span class="bad">Failed: ${err}</span>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Run Test Cases';
+            }
+        }
+
+        btn.addEventListener('click', runTests);
+    </script>
+</body>
+</html>
