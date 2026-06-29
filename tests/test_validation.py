@@ -47,6 +47,15 @@ def test_brand_fuzzy_match_warning():
 
     assert result[0]["status"] == "warning"
     assert result[0]["score"] >= 85
+    assert result[0]["score"] < 100
+
+
+def test_brand_fuzzy_match_warning_for_distillery_case():
+    extracted = "Stones Throw Distillery 90PROOF 750ML"
+    result = validate_fields("STONE'S THROW DISTILLERYY", "45%", extracted)
+
+    assert result[0]["status"] == "warning"
+    assert result[0]["score"] < 100
 
 
 def test_brand_compact_match_pass_for_collapsed_spaces():
@@ -60,6 +69,8 @@ def test_abv_exact_percent():
     result = validate_fields("X", "45%", extracted)
 
     assert result[1]["status"] == "pass"
+    assert isinstance(result[1]["score"], int)
+    assert result[1]["score"] == 100
 
 
 def test_abv_proof_conversion():

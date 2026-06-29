@@ -29,7 +29,7 @@ URL=URL_RENDER
 
 LOCAL_TEST_IMAGE = "tests/images/test_label_stb.jpg"
 REMOTE_TEST_IMAGE = "tests/images/test_label_stb.jpg"
-APPLICATION_TEXT_FILE = "tests/data/label_text.txt"
+APPLICATION_TEXT_FILE = "tests/data/application_data.txt"
 
 # 1x1 transparent PNG used when skipping OCR-dependent image checks.
 SKIP_OCR_IMAGE_BYTES = (
@@ -93,6 +93,24 @@ def _extract_abv_numeric(text):
     return ""
 
 
+def _read_case_lines(file_path):
+    with open(file_path, encoding="utf-8") as f:
+        return [line.strip() for line in f.read().splitlines() if line.strip()]
+
+
+def _load_application_inputs(repo_root):
+    lines = _read_case_lines(repo_root / APPLICATION_TEXT_FILE)
+    return lines[0], lines[2]
+
+
+def _resolve_case_image_path(test_case, default_image_path):
+    return Path(test_case.get("image_file") or default_image_path)
+
+
+def _resolve_application_data_path(test_case, repo_root):
+    return repo_root / test_case.get("application_data_file", APPLICATION_TEXT_FILE)
+
+
 def _build_request_data(brand_name, abv):
     abv_numeric = _extract_abv_numeric(abv)
     return {
@@ -144,75 +162,18 @@ def _extract_results_payload(result):
 
     return normalized_results, missing_fields, missing_fields_source
 
-
-def _print_extracted_debug(result):
-    extracted_text = result.get("extracted_text")
-    if not extracted_text:
-        extracted_text = result.get("extracted_text_preview")
-
-    if extracted_text:
-        print("--- Extracted Text ---")
-        print(str(extracted_text).strip())
-        print("----------------------")
-    else:
-        print("[WARN] No extracted text found in response payload.")
-
-
-def _print_extracted(url, timeout_seconds, verify_ssl, file_field, image_path, skip_ocr):
-    if not TEST_CASES:
-        return
-
-    with open(TEST_CASES[0]["file"]) as f:
-        lines = f.read().strip().split("\n")
-
-    brand_name = lines[0]
-    abv = TEST_CASES[0].get("abv_override", lines[1])
-    data = _build_request_data(brand_name, abv)
-
-    try:
-        if skip_ocr:
-            image_file = BytesIO(SKIP_OCR_IMAGE_BYTES)
-            files = {file_field: ("skip-ocr.png", image_file, "image/png")}
-        else:
-            image_file = open(image_path, "rb")
-            files = {file_field: ("test.jpg", image_file, "image/jpeg")}
-
-        with image_file:
-            response = requests.post(
-                url,
-                data=data,
-                files=files,
-                timeout=timeout_seconds,
-                verify=verify_ssl,
-            )
-    except requests.exceptions.RequestException as exc:
-        print(f"[WARN] Could not fetch extracted text preview before tests: {exc}")
-        return
-
-    if response.status_code != 200:
-        print(f"[WARN] Could not fetch extracted text preview before tests: HTTP {response.status_code}")
-        return
-
-    try:
-        result = response.json()
-    except ValueError:
-        print("[WARN] Could not fetch extracted text preview before tests: non-JSON response")
-        return
-
-    if isinstance(result, dict):
-        print("=== EXTRACTED TEXT (PREVIEW) ===")
-        _print_extracted_debug(result)
-
-
 def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries, file_field, image_path, skip_ocr):
     print(f"\n=== {test_case['name']} ===")
 
-    with open(test_case["file"]) as f:
-        lines = f.read().strip().split("\n")
+    repo_root = Path(__file__).resolve().parent.parent
+    application_data_path = _resolve_application_data_path(test_case, repo_root)
+    lines = _read_case_lines(application_data_path)
+    application_brand_name = lines[0]
+    application_abv = lines[2]
+    application_data_text = application_data_path.read_text(encoding="utf-8").strip()
 
-    brand_name = lines[0]
-    abv = test_case.get("abv_override", lines[1])
-    data = _build_request_data(brand_name, abv)
+    case_image_path = _resolve_case_image_path(test_case, image_path)
+    data = _build_request_data(application_brand_name, application_abv)
 
     response = None
     last_error = None
@@ -226,9 +187,9 @@ def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries, file_fie
                     file_field: ("skip-ocr.png", image_file, "image/png")
                 }
             else:
-                image_file = open(image_path, "rb")
+                image_file = open(case_image_path, "rb")
                 files = {
-                    file_field: ("test.jpg", image_file, "image/jpeg")
+                    file_field: (case_image_path.name, image_file, "image/jpeg")
                 }
 
             with image_file:
@@ -257,8 +218,9 @@ def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries, file_fie
         print(f"[FAIL] Request error: {last_error}")
         return False
 
-    print(f"Input brand: {brand_name}")
-    print(f"Input ABV: {abv}")
+    print("Comparison:")
+    print("Application Data:")
+    print(application_data_text)
 
     if response.status_code != 200:
         body_preview = (response.text or "").strip().replace("\n", " ")[:180]
@@ -267,10 +229,9 @@ def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries, file_fie
         # Fall back to local validation using the checked-in text fixture.
         if skip_ocr and response.status_code == 400 and "Could not read text from image" in (response.text or ""):
             print("[WARN] Remote OCR failed; using local mock text fallback for validation checks.")
-            with open(APPLICATION_TEXT_FILE, encoding="utf-8") as f:
-                extracted_text = f.read()
+            extracted_text = application_data_text
             result = {
-                "results": validate_fields(brand_name, abv, extracted_text)
+                "results": validate_fields(application_brand_name, application_abv, extracted_text)
             }
         else:
             print(f"[FAIL] Request failed: {response.status_code} for {response.url}")
@@ -303,6 +264,16 @@ def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries, file_fie
         return False
 
     actual_status_by_field = {}
+
+    print("Extracted Data:")
+    extracted_preview = None
+    if isinstance(result, dict):
+        extracted_preview = result.get("extracted_text") or result.get("extracted_text_preview")
+
+    if extracted_preview:
+        print(extracted_preview)
+    else:
+        print("(not provided in response)")
 
     for r in normalized_results:
         print(f"{r['field']}: {r['status']} ({r.get('score', '-')})")
@@ -339,13 +310,7 @@ def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries, file_fie
 
 
 def print_application_data():
-    print("=== APPLICATION DATA ===")
-    try:
-        with open(APPLICATION_TEXT_FILE, encoding="utf-8") as f:
-            print(f.read().strip())
-    except FileNotFoundError:
-        print(f"Application text file not found: {APPLICATION_TEXT_FILE}")
-    print("======================================")
+    return
 
 
 if __name__ == "__main__":
@@ -421,8 +386,6 @@ if __name__ == "__main__":
             print("   Provide a real image fixture or run with --skip-ocr.")
             sys.exit(1)
 
-    show_extracted = not args.hide_extracted
-
     print(f"Endpoint: {args.url}")
     print(f"Timeout: {args.timeout}s")
     print(f"Retries: {args.retries}")
@@ -430,23 +393,10 @@ if __name__ == "__main__":
     print(f"Image field: {file_field}")
     print(f"Image path: {image_path}")
     print(f"Skip OCR: {skip_ocr_mode}")
-    print(f"Show extracted: {show_extracted}")
     print("\n")
 
     passed = 0
     failed = 0
-
-    print_application_data()
-
-    if show_extracted:
-        _print_extracted(
-            args.url,
-            args.timeout,
-            verify_ssl,
-            file_field,
-            image_path,
-            skip_ocr_mode,
-        )
 
     for case in TEST_CASES:
         if run_test_case(case, args.url, args.timeout, verify_ssl, args.retries, file_field, image_path, skip_ocr_mode):

@@ -86,6 +86,17 @@ def normalize_brand_compact(text):
     """Compact normalization that removes all non-alphanumeric characters."""
     return re.sub(r"[^a-z0-9]+", "", text.lower())
 
+
+def compute_abv_score(expected_val, detected_val):
+    """Compute a simple 0-100 confidence score from ABV delta."""
+    if expected_val is None or detected_val is None:
+        return 0, None
+
+    delta = abs(detected_val - expected_val)
+    # 100 at exact match; degrades with larger delta and bottoms at 0.
+    score = max(0, int(round(100 - (delta * 25))))
+    return score, round(delta, 4)
+
 def validate_fields(expected_brand, expected_abv, extracted_text):
     results = []
 
@@ -113,12 +124,13 @@ def validate_fields(expected_brand, expected_abv, extracted_text):
             status = "pass"
             score = 100
         else:
-            score = max(
+            score = int(round(max(
                 fuzz.partial_ratio(expected_brand_lower, extracted_lower),
                 fuzz.token_sort_ratio(expected_brand_lower, extracted_lower)
-            )
+            )))
 
             if score >= 85:
+                score = min(score, 99)
                 status = "warning"   # close match (case, punctuation, spacing)
             else:
                 status = "fail"
@@ -136,14 +148,22 @@ def validate_fields(expected_brand, expected_abv, extracted_text):
     extracted_proof = normalize_proof(extracted_text)
 
     abv_match = False
+    detected_value = None
+    detected_source = None
 
     if extracted_percent is not None and expected_val is not None:
+        detected_value = extracted_percent
+        detected_source = "percent"
         if abs(extracted_percent - expected_val) <= 1:
             abv_match = True
 
     elif extracted_proof is not None and expected_val is not None:
+        detected_value = extracted_proof
+        detected_source = "proof"
         if abs(extracted_proof - expected_val) <= 1:
             abv_match = True
+
+    abv_score, abv_delta = compute_abv_score(expected_val, detected_value)
 
     abv_status = "pass" if abv_match else "fail"
 
@@ -151,9 +171,12 @@ def validate_fields(expected_brand, expected_abv, extracted_text):
     results.append({
         "field": "abv",
         "status": abv_status,
+        "score": abv_score,
         "expected": expected_val,
         "detected_percent": extracted_percent,
-        "detected_proof": extracted_proof
+        "detected_proof": extracted_proof,
+        "detected_source": detected_source,
+        "delta": abv_delta,
     })
 
     return results
