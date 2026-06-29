@@ -6,3 +6,4 @@ httpx
 rapidfuzz
 requests
 easyocr
+rapidocr-onnxruntime

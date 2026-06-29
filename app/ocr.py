@@ -3,20 +3,6 @@ import os
 from typing import List
 
 
-@lru_cache(maxsize=1)
-def _get_reader():
-    """Build and cache the EasyOCR reader once per process."""
-    try:
-        import easyocr
-    except ImportError as exc:
-        raise RuntimeError(
-            "EasyOCR dependency is missing. Install with: pip install easyocr"
-        ) from exc
-
-    # Keep language list small for faster startup and better label accuracy.
-    return easyocr.Reader(["en"], gpu=False)
-
-
 def _is_supported_image(file_path: str) -> bool:
     """Check if file looks like JPEG, PNG, or WebP by magic bytes."""
     with open(file_path, "rb") as f:
@@ -44,102 +30,71 @@ def _dedupe_lines(lines: List[str]) -> List[str]:
     return deduped
 
 
-def _run_ocr_passes(reader, file_path: str) -> List[str]:
-    """Run OCR on original and preprocessed variants to improve recall."""
-    all_lines: List[str] = []
+@lru_cache(maxsize=1)
+def _get_rapidocr_engine():
+    """Build and cache RapidOCR engine once per process."""
+    try:
+        from rapidocr_onnxruntime import RapidOCR
+    except ImportError as exc:
+        raise RuntimeError(
+            "RapidOCR dependency is missing. Install with: pip install rapidocr-onnxruntime"
+        ) from exc
 
-    # Pass 1: original image.
-    original_lines = reader.readtext(
-        file_path,
-        detail=0,
-        paragraph=False,
-        decoder="beamsearch",
-        beamWidth=7,
-        contrast_ths=0.05,
-        adjust_contrast=0.7,
-    )
-    all_lines.extend(str(line) for line in original_lines)
-
-    # Pass 2-3: grayscale/autocontrast variants improve small punctuation and low-contrast text.
-    with Image.open(file_path) as image:
-        gray = ImageOps.grayscale(image)
-        boosted = ImageOps.autocontrast(gray)
-        sharpened = boosted.filter(ImageFilter.SHARPEN)
-        binary = boosted.point(lambda p: 255 if p > 165 else 0)
-
-        for variant in (sharpened, binary):
-            lines = reader.readtext(
-                np.array(variant),
-                detail=0,
-                paragraph=False,
-                decoder="beamsearch",
-                beamWidth=7,
-                contrast_ths=0.03,
-                adjust_contrast=0.8,
-            )
-            all_lines.extend(str(line) for line in lines)
-
-    return _dedupe_lines(all_lines)
+    return RapidOCR()
 
 
-def _run_ocr_lite(reader, file_path: str) -> List[str]:
-    """Memory-friendly OCR pass for constrained environments like Render free tier."""
-    from PIL import Image, ImageOps
+def _prepare_image_array(file_path: str):
+    """Load and downscale image before OCR to lower peak memory usage."""
     import numpy as np
+    from PIL import Image, ImageOps
 
-    max_side = int(os.getenv("OCR_MAX_SIDE", "1280"))
+    max_side = int(os.getenv("OCR_MAX_SIDE", "1024"))
 
     with Image.open(file_path) as image:
         image = ImageOps.exif_transpose(image).convert("RGB")
         image.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
-        image_np = np.array(image)
+        return np.array(image)
 
-    lines = reader.readtext(
-        image_np,
-        detail=0,
-        paragraph=False,
-        decoder="greedy",
-        batch_size=1,
-        workers=0,
-        canvas_size=max_side,
-        mag_ratio=1.0,
-    )
+
+def _extract_lines_from_rapidocr_result(ocr_result) -> List[str]:
+    """Extract text lines from RapidOCR raw output."""
+    lines: List[str] = []
+    if not ocr_result:
+        return lines
+
+    for item in ocr_result:
+        # Expected shape: [box, text, score]
+        if isinstance(item, (list, tuple)) and len(item) >= 2:
+            text = item[1]
+        elif isinstance(item, dict):
+            text = item.get("text")
+        else:
+            text = None
+
+        if text:
+            lines.append(str(text))
+
     return _dedupe_lines(lines)
 
 
-def _run_ocr_accurate(reader, file_path: str) -> List[str]:
-    """Higher-accuracy OCR mode with preprocessing variants (uses more memory)."""
-    import numpy as np
-    from PIL import Image, ImageFilter, ImageOps
-
-    return _run_ocr_passes(reader, file_path)
-
-
-def _selected_ocr_mode() -> str:
-    """Select OCR mode. Defaults to lite for safer production memory usage."""
-    return os.getenv("OCR_MODE", "lite").strip().lower()
-
-
 def extract_text_from_image(file_path: str) -> str:
-    """Extract text from an image file using EasyOCR."""
+    """Extract text from an image file using RapidOCR."""
     if not _is_supported_image(file_path):
         raise ValueError("Unsupported image format. Use JPEG, PNG, or WebP")
 
-    reader = _get_reader()
+    engine = _get_rapidocr_engine()
+    image_array = _prepare_image_array(file_path)
 
     try:
-        mode = _selected_ocr_mode()
-        if mode == "accurate":
-            lines = _run_ocr_accurate(reader, file_path)
-        else:
-            lines = _run_ocr_lite(reader, file_path)
+        ocr_result, _ = engine(image_array)
     except Exception as exc:
         message = str(exc)
-        if "Could not find a backend to open" in message:
+        if "cannot identify image file" in message.lower() or "Could not find a backend to open" in message:
             raise ValueError("Invalid image file. Could not decode uploaded image") from exc
-        raise RuntimeError(f"EasyOCR failed for image '{file_path}': {exc}") from exc
+        raise RuntimeError(f"RapidOCR failed for image '{file_path}': {exc}") from exc
 
-    text = "\n".join(line.strip() for line in lines if str(line).strip())
+    lines = _extract_lines_from_rapidocr_result(ocr_result)
+    text = "\n".join(lines)
     if not text:
         raise ValueError("Could not read text from image")
 

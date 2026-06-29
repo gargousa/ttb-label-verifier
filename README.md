@@ -25,21 +25,19 @@ Tests are run separately with pytest (or automatically in CI on push/PR).
 ## OCR
 OCR Design Choice:
 
-The prototype uses EasyOCR to avoid system-level dependencies (e.g., Tesseract binaries),
-making it easier to deploy in restricted environments.
+The active OCR implementation uses RapidOCR (ONNX Runtime) to avoid system-level
+dependencies (e.g., Tesseract binaries) and reduce memory usage on constrained deployments.
 
-While EasyOCR is slightly slower than Tesseract, the performance is acceptable for
-a prototype and provides better robustness against real-world label variations.
-The /verify endpoint uses EasyOCR to scan uploaded label images.
+EasyOCR is still listed as a dependency for compatibility experiments, but it is not called
+by the current OCR pipeline.
+
+The /verify endpoint uses RapidOCR to scan uploaded label images.
 
 Memory mode configuration:
 
-	OCR_MODE=lite     # default, single-pass OCR with lower memory footprint
-	OCR_MODE=accurate # optional, multi-pass OCR with preprocessing (higher memory)
-	OCR_MAX_SIDE=1280 # optional, downscale long edge before OCR to reduce peak memory
+	OCR_MAX_SIDE=1024 # optional, downscale long edge before OCR to reduce peak memory
 
-For Render free-tier services, keep OCR_MODE=lite to avoid out-of-memory restarts.
-If memory pressure continues, lower OCR_MAX_SIDE (for example 1024 or 896).
+For Render free-tier services, lower OCR_MAX_SIDE (for example 896 or 768) if memory pressure continues.
 
 Install dependencies:
 

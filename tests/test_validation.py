@@ -48,6 +48,13 @@ def test_brand_fuzzy_match_warning():
     assert result[0]["status"] == "warning"
     assert result[0]["score"] >= 85
 
+
+def test_brand_compact_match_pass_for_collapsed_spaces():
+    extracted = "STONE'STHROWDISTILLERY 45%"
+    result = validate_fields("STONE'S THROW DISTILLERY", "45%", extracted)
+
+    assert result[0]["status"] == "pass"
+
 def test_abv_exact_percent():
     extracted = "45% ALC/VOL"
     result = validate_fields("X", "45%", extracted)

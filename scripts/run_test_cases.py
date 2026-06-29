@@ -15,12 +15,17 @@ except ModuleNotFoundError:
     sys.path.insert(0, str(repo_root))
     from app.validation import validate_fields
 
+try:
+    from test_cases_config import TEST_CASES
+except ModuleNotFoundError:
+    from scripts.test_cases_config import TEST_CASES
+
 
 URL_LOCAL = "http://127.0.0.1:8000/verify"
 URL_RENDER = "https://ttb-label-verifier-edgk.onrender.com/verify"
 
 #Choose the Testing URL based
-URL=URL_RENDER
+URL=URL_LOCAL
 
 LOCAL_TEST_IMAGE = "tests/images/test_label_stb.jpg"
 REMOTE_TEST_IMAGE = "tests/images/test_label_stb.jpg"
@@ -32,87 +37,6 @@ SKIP_OCR_IMAGE_BYTES = (
     b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0cIDATx\x9cc\x00\x01"
     b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
 )
-
-TEST_CASES = [
-    {
-        "name": "LABEL: EXACT MATCH",
-        "file": "tests/data/test_label_stb_exact.txt",
-        "expected": {
-            "brand_name": "pass",
-            "abv": "pass"
-        },
-        "expected_missing_failures": [
-            "government_warning",
-            "class_type",
-            "net_contents",
-            "producer_name_address",
-            "country_of_origin",
-        ],
-    },
-    {
-        "name": "LABEL: FUZZY MATCH",
-        "file": "tests/data/test_label_stb_fuzzy.txt",
-        "expected": {
-            "brand_name": "warning",
-            "abv": "pass"
-        },
-        "expected_missing_failures": [
-            "government_warning",
-            "class_type",
-            "net_contents",
-            "producer_name_address",
-            "country_of_origin",
-        ],
-    },
-    {
-        "name": "LABEL: FAIL CASE",
-        "file": "tests/data/test_label_stb_fail.txt",
-        "expected": {
-            "brand_name": "fail",
-            "abv": "pass"
-        },
-        "expected_missing_failures": [
-            "government_warning",
-            "class_type",
-            "net_contents",
-            "producer_name_address",
-            "country_of_origin",
-        ],
-    },
-    {
-        "name": "LABEL: ABV MISMATCH",
-        "file": "tests/data/test_label_stb_exact.txt",
-        "abv_override": "40% ALC/VOL",
-        "expected": {
-            "brand_name": "pass",
-            "abv": "fail"
-        },
-        "expected_missing_failures": [
-            "government_warning",
-            "class_type",
-            "net_contents",
-            "producer_name_address",
-            "country_of_origin",
-        ],
-    },
-    {
-        "name": "LABEL: ABV WITHIN TOLERANCE",
-        "file": "tests/data/test_label_stb_exact.txt",
-        "abv_override": "44% ALC/VOL",
-        "expected": {
-            "brand_name": "pass",
-            "abv": "pass"
-        },
-        "expected_missing_failures": [
-            "government_warning",
-            "class_type",
-            "net_contents",
-            "producer_name_address",
-            "country_of_origin",
-        ],
-    }
-]
-
 
 def is_supported_image(path):
     with open(path, "rb") as f:
@@ -169,6 +93,24 @@ def _extract_abv_numeric(text):
     return ""
 
 
+def _build_request_data(brand_name, abv):
+    abv_numeric = _extract_abv_numeric(abv)
+    return {
+        "brand_name": brand_name,
+        "abv": abv,
+        "brand": brand_name,
+        "brandName": brand_name,
+        "Brand Name": brand_name,
+        "alcohol_content": abv_numeric,
+        "alcoholContent": abv_numeric,
+        "Alcohol Content": abv_numeric,
+        "alcohol_content_numeric": abv_numeric,
+        "alcoholContentNumeric": abv_numeric,
+        "abv_raw": abv,
+        "alcohol_content_raw": abv,
+    }
+
+
 def _extract_results_payload(result):
     """Normalize API response to a results-like list and missing_fields set."""
     normalized_results = []
@@ -203,6 +145,65 @@ def _extract_results_payload(result):
     return normalized_results, missing_fields, missing_fields_source
 
 
+def _print_extracted_debug(result):
+    extracted_text = result.get("extracted_text")
+    if not extracted_text:
+        extracted_text = result.get("extracted_text_preview")
+
+    if extracted_text:
+        print("--- Extracted Text ---")
+        print(str(extracted_text).strip())
+        print("----------------------")
+    else:
+        print("[WARN] No extracted text found in response payload.")
+
+
+def _print_extracted(url, timeout_seconds, verify_ssl, file_field, image_path, skip_ocr):
+    if not TEST_CASES:
+        return
+
+    with open(TEST_CASES[0]["file"]) as f:
+        lines = f.read().strip().split("\n")
+
+    brand_name = lines[0]
+    abv = TEST_CASES[0].get("abv_override", lines[1])
+    data = _build_request_data(brand_name, abv)
+
+    try:
+        if skip_ocr:
+            image_file = BytesIO(SKIP_OCR_IMAGE_BYTES)
+            files = {file_field: ("skip-ocr.png", image_file, "image/png")}
+        else:
+            image_file = open(image_path, "rb")
+            files = {file_field: ("test.jpg", image_file, "image/jpeg")}
+
+        with image_file:
+            response = requests.post(
+                url,
+                data=data,
+                files=files,
+                timeout=timeout_seconds,
+                verify=verify_ssl,
+            )
+    except requests.exceptions.RequestException as exc:
+        print(f"[WARN] Could not fetch extracted text preview before tests: {exc}")
+        return
+
+    if response.status_code != 200:
+        print(f"[WARN] Could not fetch extracted text preview before tests: HTTP {response.status_code}")
+        return
+
+    try:
+        result = response.json()
+    except ValueError:
+        print("[WARN] Could not fetch extracted text preview before tests: non-JSON response")
+        return
+
+    if isinstance(result, dict):
+        print("=== EXTRACTED TEXT (PREVIEW) ===")
+        _print_extracted_debug(result)
+
+
 def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries, file_field, image_path, skip_ocr):
     print(f"\n=== {test_case['name']} ===")
 
@@ -211,23 +212,7 @@ def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries, file_fie
 
     brand_name = lines[0]
     abv = test_case.get("abv_override", lines[1])
-    abv_numeric = _extract_abv_numeric(abv)
-
-    # Send both current and legacy key aliases for compatibility across deployed API versions.
-    data = {
-        "brand_name": brand_name,
-        "abv": abv,
-        "brand": brand_name,
-        "brandName": brand_name,
-        "Brand Name": brand_name,
-        "alcohol_content": abv_numeric,
-        "alcoholContent": abv_numeric,
-        "Alcohol Content": abv_numeric,
-        "alcohol_content_numeric": abv_numeric,
-        "alcoholContentNumeric": abv_numeric,
-        "abv_raw": abv,
-        "alcohol_content_raw": abv,
-    }
+    data = _build_request_data(brand_name, abv)
 
     response = None
     last_error = None
@@ -402,6 +387,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Skip OCR-dependent image fixture checks and upload a built-in tiny PNG instead",
     )
+    parser.add_argument(
+        "--hide-extracted",
+        action="store_true",
+        help="Suppress OCR extracted text output for each test case",
+    )
     args = parser.parse_args()
 
     verify_ssl = not args.insecure
@@ -431,18 +421,32 @@ if __name__ == "__main__":
             print("   Provide a real image fixture or run with --skip-ocr.")
             sys.exit(1)
 
+    show_extracted = not args.hide_extracted
+
     print(f"Endpoint: {args.url}")
     print(f"Timeout: {args.timeout}s")
     print(f"Retries: {args.retries}")
     print(f"TLS verify: {verify_ssl}")
     print(f"Image field: {file_field}")
     print(f"Image path: {image_path}")
-    print(f"Skip OCR: {skip_ocr_mode}\n")
+    print(f"Skip OCR: {skip_ocr_mode}")
+    print(f"Show extracted: {show_extracted}")
+    print("\n")
 
     passed = 0
     failed = 0
 
     print_application_data()
+
+    if show_extracted:
+        _print_extracted(
+            args.url,
+            args.timeout,
+            verify_ssl,
+            file_field,
+            image_path,
+            skip_ocr_mode,
+        )
 
     for case in TEST_CASES:
         if run_test_case(case, args.url, args.timeout, verify_ssl, args.retries, file_field, image_path, skip_ocr_mode):
