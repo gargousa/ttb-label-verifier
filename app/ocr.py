@@ -84,13 +84,25 @@ def _run_ocr_passes(reader, file_path: str) -> List[str]:
 
 def _run_ocr_lite(reader, file_path: str) -> List[str]:
     """Memory-friendly OCR pass for constrained environments like Render free tier."""
+    from PIL import Image, ImageOps
+    import numpy as np
+
+    max_side = int(os.getenv("OCR_MAX_SIDE", "1280"))
+
+    with Image.open(file_path) as image:
+        image = ImageOps.exif_transpose(image).convert("RGB")
+        image.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+        image_np = np.array(image)
+
     lines = reader.readtext(
-        file_path,
+        image_np,
         detail=0,
         paragraph=False,
         decoder="greedy",
         batch_size=1,
         workers=0,
+        canvas_size=max_side,
+        mag_ratio=1.0,
     )
     return _dedupe_lines(lines)
 

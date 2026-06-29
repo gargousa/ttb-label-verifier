@@ -36,8 +36,10 @@ Memory mode configuration:
 
 	OCR_MODE=lite     # default, single-pass OCR with lower memory footprint
 	OCR_MODE=accurate # optional, multi-pass OCR with preprocessing (higher memory)
+	OCR_MAX_SIDE=1280 # optional, downscale long edge before OCR to reduce peak memory
 
 For Render free-tier services, keep OCR_MODE=lite to avoid out-of-memory restarts.
+If memory pressure continues, lower OCR_MAX_SIDE (for example 1024 or 896).
 
 Install dependencies:
 
