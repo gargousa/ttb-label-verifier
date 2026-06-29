@@ -100,7 +100,9 @@ def _read_case_lines(file_path):
 
 def _load_application_inputs(repo_root):
     lines = _read_case_lines(repo_root / APPLICATION_TEXT_FILE)
-    return lines[0], lines[2]
+    class_type = lines[1] if len(lines) > 1 else ""
+    abv = lines[2] if len(lines) > 2 else ""
+    return lines[0], class_type, abv
 
 
 def _resolve_case_image_path(test_case, default_image_path):
@@ -111,11 +113,14 @@ def _resolve_application_data_path(test_case, repo_root):
     return repo_root / test_case.get("application_data_file", APPLICATION_TEXT_FILE)
 
 
-def _build_request_data(brand_name, abv):
+def _build_request_data(brand_name, abv, class_type=None):
     abv_numeric = _extract_abv_numeric(abv)
     return {
         "brand_name": brand_name,
         "abv": abv,
+        "class_type": class_type or "",
+        "classType": class_type or "",
+        "class": class_type or "",
         "brand": brand_name,
         "brandName": brand_name,
         "Brand Name": brand_name,
@@ -169,11 +174,12 @@ def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries, file_fie
     application_data_path = _resolve_application_data_path(test_case, repo_root)
     lines = _read_case_lines(application_data_path)
     application_brand_name = lines[0]
-    application_abv = lines[2]
+    application_class_type = lines[1] if len(lines) > 1 else ""
+    application_abv = lines[2] if len(lines) > 2 else ""
     application_data_text = application_data_path.read_text(encoding="utf-8").strip()
 
     case_image_path = _resolve_case_image_path(test_case, image_path)
-    data = _build_request_data(application_brand_name, application_abv)
+    data = _build_request_data(application_brand_name, application_abv, application_class_type)
 
     response = None
     last_error = None
@@ -231,7 +237,12 @@ def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries, file_fie
             print("[WARN] Remote OCR failed; using local mock text fallback for validation checks.")
             extracted_text = application_data_text
             result = {
-                "results": validate_fields(application_brand_name, application_abv, extracted_text)
+                "results": validate_fields(
+                    application_brand_name,
+                    application_abv,
+                    extracted_text,
+                    expected_class_type=application_class_type,
+                )
             }
         else:
             print(f"[FAIL] Request failed: {response.status_code} for {response.url}")

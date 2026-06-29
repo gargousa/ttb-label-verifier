@@ -37,7 +37,12 @@ def test_realistic_label_case():
     750 ML
     """
 
-    result = validate_fields("OLD TOM DISTILLERY", "45%", extracted)
+    result = validate_fields(
+        "OLD TOM DISTILLERY",
+        "45%",
+        extracted,
+        expected_class_type="Kentucky Straight Bourbon Whiskey",
+    )
 
     assert all(r["status"] == "pass" for r in result)    
 
@@ -92,3 +97,50 @@ def test_abv_mismatch():
     result = validate_fields("X", "45%", extracted)
 
     assert result[1]["status"] == "fail"
+
+
+def test_net_contents_detected_pass():
+    extracted = "OLD TOM DISTILLERY 45% ALC/VOL 750 ML"
+    result = validate_fields("OLD TOM DISTILLERY", "45%", extracted)
+
+    net = next(item for item in result if item["field"] == "net_contents")
+    assert net["status"] == "pass"
+    assert net["score"] == 100
+    assert net["detected"] == "750 ML"
+
+
+def test_net_contents_missing_fails():
+    extracted = "OLD TOM DISTILLERY 45% ALC/VOL"
+    result = validate_fields("OLD TOM DISTILLERY", "45%", extracted)
+
+    net = next(item for item in result if item["field"] == "net_contents")
+    assert net["status"] == "fail"
+    assert net["score"] == 0
+    assert net["detected"] is None
+
+
+def test_class_type_exact_match_passes():
+    extracted = "Kentucky Straight Bourbon Whiskey"
+    result = validate_fields("X", "45%", extracted, expected_class_type="Kentucky Straight Bourbon Whiskey")
+
+    class_type = next(item for item in result if item["field"] == "class_type")
+    assert class_type["status"] == "pass"
+    assert class_type["score"] == 100
+
+
+def test_class_type_fuzzy_match_warns():
+    extracted = "Kentucky Straight Bourbon Whsky"
+    result = validate_fields("X", "45%", extracted, expected_class_type="Kentucky Straight Bourbon Whiskey")
+
+    class_type = next(item for item in result if item["field"] == "class_type")
+    assert class_type["status"] == "warning"
+    assert class_type["score"] < 100
+
+
+def test_class_type_missing_fails():
+    extracted = "OLD TOM DISTILLERY 45% ALC/VOL"
+    result = validate_fields("X", "45%", extracted, expected_class_type="Kentucky Straight Bourbon Whiskey")
+
+    class_type = next(item for item in result if item["field"] == "class_type")
+    assert class_type["status"] == "fail"
+    assert class_type["score"] < 85
