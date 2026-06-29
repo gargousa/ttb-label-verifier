@@ -22,8 +22,6 @@
 <body>
     <h1>Test Runner</h1>
     <div class="row">
-        <label for="imagePath">Image path:</label>
-        <input id="imagePath" type="text" value="tests/images/test_label_stb.jpg" style="flex:1; padding: 8px;" />
         <button id="runBtn">Run Test Cases</button>
     </div>
     <div id="summary" class="summary"></div>
@@ -56,11 +54,10 @@
             rows.innerHTML = '';
 
             try {
-                const imagePath = document.getElementById('imagePath').value.trim();
                 const resp = await fetch('/tests/ui/run', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ image_path: imagePath })
+                    body: JSON.stringify({})
                 });
                 const data = await resp.json();
 

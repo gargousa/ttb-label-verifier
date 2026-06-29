@@ -1,6 +1,45 @@
 # ttb-label-verifier
 AI-Powered Alcohol Label Verification App
 
+## Prototype Scope
+
+This repository is a prototype focused on validating a core subset of label checks.
+
+Implemented checks (current):
+
+- brand_name
+- class_type
+- abv
+- net_contents
+
+Not implemented yet (planned for later phases):
+
+- government_warning
+- producer_name_address
+- country_of_origin
+
+Current behavior reflects this scope:
+
+- Implemented checks return active pass/warning/fail results and scores.
+- Not-yet-implemented checks are acknowledged in the API metadata and are reported as missing until their validation logic is added.
+
+This staged approach is intentional for the prototype and helps keep OCR + validation behavior stable while remaining checks are added incrementally.
+
+## Roadmap
+
+Planned order for future check implementation:
+
+1. government_warning
+2. producer_name_address
+3. country_of_origin
+
+Each roadmap item will be added with:
+
+- OCR-tolerant detection logic
+- pass/warning/fail + score output
+- API coverage tests
+- test-runner case expectations updates
+
 ## Deployment
 
 This application is deployed on Render for ease of evaluation.

@@ -1,0 +1,198 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Label Verification UI</title>
+    <style>
+        body { font-family: Segoe UI, Arial, sans-serif; max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+        .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+        input[type="file"] { padding: 6px; }
+        button { padding: 10px 14px; font-size: 14px; cursor: pointer; }
+        .summary { margin: 14px 0; font-weight: 600; }
+        .ok { color: #0a7f3f; }
+        .warn { color: #b06b00; }
+        .bad { color: #b42318; }
+        .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
+        .comparison h3 { margin: 0 0 8px; font-size: 15px; }
+        pre { background: #f6f8fa; border: 1px solid #ddd; padding: 12px; border-radius: 8px; white-space: pre-wrap; margin: 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background: #f3f4f6; }
+    </style>
+</head>
+<body>
+    <h1>Label Verification UI</h1>
+    <div class="row">
+        <label for="applicationData">Application data (.txt):</label>
+        <input id="applicationData" type="file" accept=".txt,text/plain" />
+        <label for="labelImage">Label image:</label>
+        <input id="labelImage" type="file" accept="image/*" />
+        <button id="runBtn">Verify Label</button>
+    </div>
+
+    <div id="summary" class="summary"></div>
+
+    <div class="comparison">
+        <div>
+            <h3>Application Data</h3>
+            <pre id="applicationDataText">(not run yet)</pre>
+        </div>
+        <div>
+            <h3>Extracted Data</h3>
+            <pre id="extractedText">(not run yet)</pre>
+        </div>
+    </div>
+
+    <h3>Checks</h3>
+    <table>
+        <thead>
+            <tr><th>Check</th><th>Application Data</th><th>Extracted Data</th><th>Status</th><th>Score</th></tr>
+        </thead>
+        <tbody id="checkRows"></tbody>
+    </table>
+
+    <script>
+        const runBtn = document.getElementById('runBtn');
+        const summary = document.getElementById('summary');
+        const applicationDataText = document.getElementById('applicationDataText');
+        const extractedText = document.getElementById('extractedText');
+        const checkRows = document.getElementById('checkRows');
+
+        function escapeHtml(text) {
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function extractExpectedNetContents(rawText) {
+            const match = String(rawText || '').match(/\b(\d{1,4}(?:\.\d{1,2})?)\s*(ml|l|cl|fl\.?\s*oz)\b/i);
+            if (!match) return '-';
+            const unit = match[2].replace(/\./g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+            return `${match[1]} ${unit}`;
+        }
+
+        function extractedSnippet(rawText, maxLines = 2) {
+            const lines = String(rawText || '')
+                .split(/\r?\n/)
+                .map(line => line.trim())
+                .filter(Boolean);
+            if (!lines.length) return '(not detected)';
+            return lines.slice(0, maxLines).join(' | ');
+        }
+
+        function getCheckComparison(check, payload) {
+            const field = check.field;
+            if (field === 'brand_name') {
+                return {
+                    application: payload.application_data?.brand_name || '-',
+                    extracted: extractedSnippet(payload.extracted_text, 2)
+                };
+            }
+
+            if (field === 'class_type') {
+                return {
+                    application: payload.application_data?.class_type || '-',
+                    extracted: check.detected || '(not detected)'
+                };
+            }
+
+            if (field === 'abv') {
+                let extracted = '(not detected)';
+                if (check.detected_percent != null) {
+                    extracted = `${check.detected_percent}%`;
+                } else if (check.detected_proof != null) {
+                    extracted = `${check.detected_proof}% (from proof)`;
+                }
+                return {
+                    application: payload.application_data?.abv || '-',
+                    extracted,
+                };
+            }
+
+            if (field === 'net_contents') {
+                return {
+                    application: extractExpectedNetContents(payload.application_data?.raw_text),
+                    extracted: check.detected || '(not detected)'
+                };
+            }
+
+            return { application: '-', extracted: '-' };
+        }
+
+        function statusClass(status) {
+            if (status === 'pass') return 'ok';
+            if (status === 'warning') return 'warn';
+            return 'bad';
+        }
+
+        async function runVerification() {
+            const imageInput = document.getElementById('labelImage');
+            const appDataInput = document.getElementById('applicationData');
+
+            if (!imageInput.files.length || !appDataInput.files.length) {
+                summary.innerHTML = '<span class="bad">Please select both files.</span>';
+                return;
+            }
+
+            runBtn.disabled = true;
+            runBtn.textContent = 'Verifying...';
+            summary.textContent = '';
+            checkRows.innerHTML = '';
+
+            try {
+                const formData = new FormData();
+                formData.append('label_image', imageInput.files[0]);
+                formData.append('application_data_file', appDataInput.files[0]);
+
+                const response = await fetch('/ui/verify', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    const detail = data && data.detail ? data.detail : 'Verification failed.';
+                    summary.innerHTML = `<span class="bad">${detail}</span>`;
+                    applicationDataText.textContent = '(error)';
+                    extractedText.textContent = '(error)';
+                    return;
+                }
+
+                const overall = (data.overall_status || 'fail').toLowerCase();
+                summary.innerHTML = `Overall Status: <span class="${statusClass(overall)}">${overall.toUpperCase()}</span>`;
+
+                const appDataLines = [
+                    `Brand: ${data.application_data.brand_name}`,
+                    `Class Type: ${data.application_data.class_type}`,
+                    `ABV: ${data.application_data.abv}`,
+                ];
+                applicationDataText.textContent = appDataLines.join('\n');
+                extractedText.textContent = data.extracted_text || '(empty)';
+
+                for (const check of (data.results || [])) {
+                    const comparison = getCheckComparison(check, data);
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${escapeHtml(check.field || '-')}</td>
+                        <td>${escapeHtml(comparison.application)}</td>
+                        <td>${escapeHtml(comparison.extracted)}</td>
+                        <td class="${statusClass((check.status || '').toLowerCase())}">${escapeHtml((check.status || '-').toUpperCase())}</td>
+                        <td>${escapeHtml(check.score == null ? '-' : check.score)}</td>
+                    `;
+                    checkRows.appendChild(tr);
+                }
+            } catch (err) {
+                summary.innerHTML = `<span class="bad">${String(err)}</span>`;
+            } finally {
+                runBtn.disabled = false;
+                runBtn.textContent = 'Verify Label';
+            }
+        }
+
+        runBtn.addEventListener('click', runVerification);
+    </script>
+</body>
+</html>

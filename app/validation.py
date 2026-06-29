@@ -21,12 +21,12 @@ SUPPORTED_CHECKS = [
     {
         "field": "class_type",
         "description": "Checks class/type designation against expected value",
-        "implemented": False,
+        "implemented": True,
     },
     {
         "field": "net_contents",
         "description": "Checks net contents value and unit formatting",
-        "implemented": False,
+        "implemented": True,
     },
     {
         "field": "producer_name_address",
@@ -65,6 +65,12 @@ def get_missing_fields(results):
             if detected_percent is None and detected_proof is None:
                 missing.append("abv")
 
+        if field == "class_type" and result.get("status") == "fail":
+            missing.append("class_type")
+
+        if field == "net_contents" and result.get("status") == "fail":
+            missing.append("net_contents")
+
     # Remove duplicates while preserving order.
     deduped = []
     seen = set()
@@ -87,6 +93,21 @@ def normalize_brand_compact(text):
     return re.sub(r"[^a-z0-9]+", "", text.lower())
 
 
+def normalize_net_contents(text):
+    """Extract net contents value + unit from OCR text (e.g. 750 ML, 1.75 L)."""
+    match = re.search(
+        r"\b(\d{1,4}(?:\.\d{1,2})?)\s*(ml|l|cl|fl\.?\s*oz)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+
+    value = match.group(1)
+    unit = re.sub(r"\s+", " ", match.group(2).lower().replace(".", "")).strip()
+    return f"{value} {unit.upper()}"
+
+
 def compute_abv_score(expected_val, detected_val):
     """Compute a simple 0-100 confidence score from ABV delta."""
     if expected_val is None or detected_val is None:
@@ -97,7 +118,7 @@ def compute_abv_score(expected_val, detected_val):
     score = max(0, int(round(100 - (delta * 25))))
     return score, round(delta, 4)
 
-def validate_fields(expected_brand, expected_abv, extracted_text):
+def validate_fields(expected_brand, expected_abv, extracted_text, expected_class_type=None):
     results = []
 
     extracted_lower = extracted_text.lower()
@@ -177,6 +198,59 @@ def validate_fields(expected_brand, expected_abv, extracted_text):
         "detected_proof": extracted_proof,
         "detected_source": detected_source,
         "delta": abv_delta,
+    })
+
+    # --- Class/Type Matching ---
+    class_type_expected = (expected_class_type or "").strip()
+    class_type_detected = None
+
+    if not class_type_expected:
+        class_type_status = "fail"
+        class_type_score = 0
+    else:
+        expected_class_lower = class_type_expected.lower()
+        extracted_lower = extracted_text.lower()
+        expected_class_normalized = normalize_brand_text(class_type_expected)
+        extracted_normalized = normalize_brand_text(extracted_text)
+
+        if expected_class_lower in extracted_lower:
+            class_type_status = "pass"
+            class_type_score = 100
+            class_type_detected = class_type_expected
+        elif re.search(rf"\b{re.escape(expected_class_normalized)}\b", extracted_normalized):
+            class_type_status = "pass"
+            class_type_score = 100
+            class_type_detected = class_type_expected
+        else:
+            class_type_score = int(round(max(
+                fuzz.partial_ratio(expected_class_lower, extracted_lower),
+                fuzz.token_sort_ratio(expected_class_lower, extracted_lower)
+            )))
+
+            if class_type_score >= 85:
+                class_type_score = min(class_type_score, 99)
+                class_type_status = "warning"
+            else:
+                class_type_status = "fail"
+
+    results.append({
+        "field": "class_type",
+        "status": class_type_status,
+        "score": class_type_score,
+        "expected": class_type_expected or None,
+        "detected": class_type_detected,
+    })
+
+    # --- Net Contents / Volume Matching ---
+    detected_net_contents = normalize_net_contents(extracted_text)
+    net_contents_status = "pass" if detected_net_contents else "fail"
+    net_contents_score = 100 if detected_net_contents else 0
+
+    results.append({
+        "field": "net_contents",
+        "status": net_contents_status,
+        "score": net_contents_score,
+        "detected": detected_net_contents,
     })
 
     return results

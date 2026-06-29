@@ -14,12 +14,13 @@ def _read_case_lines(file_path: Path) -> list[str]:
     return [line.strip() for line in file_path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def _load_application_inputs(case: Dict[str, Any], repo_root: Path) -> tuple[str, str, str]:
+def _load_application_inputs(case: Dict[str, Any], repo_root: Path) -> tuple[str, str, str, str]:
     application_file = repo_root / case.get("application_data_file", "tests/data/application_data.txt")
     lines = _read_case_lines(application_file)
     brand_name = lines[0]
-    abv = lines[2]
-    return brand_name, abv, "\n".join(lines)
+    class_type = lines[1] if len(lines) > 1 else ""
+    abv = lines[2] if len(lines) > 2 else ""
+    return brand_name, class_type, abv, "\n".join(lines)
 
 
 def _resolve_case_image_path(case: Dict[str, Any], repo_root: Path, default_image_path: str | None) -> Path:
@@ -38,7 +39,7 @@ def run_local_test_cases(image_path: str | None = None) -> Dict[str, Any]:
     failed = 0
 
     for case in TEST_CASES:
-        application_brand_name, application_abv, application_data_text = _load_application_inputs(case, root)
+        application_brand_name, application_class_type, application_abv, application_data_text = _load_application_inputs(case, root)
         resolved_image = _resolve_case_image_path(case, root, image_path)
 
         if not resolved_image.exists():
@@ -64,7 +65,12 @@ def run_local_test_cases(image_path: str | None = None) -> Dict[str, Any]:
 
         extracted_text = extracted_text_cache[resolved_image]
 
-        results = validate_fields(application_brand_name, application_abv, extracted_text)
+        results = validate_fields(
+            application_brand_name,
+            application_abv,
+            extracted_text,
+            expected_class_type=application_class_type,
+        )
         actual_status_by_field = {item["field"]: item["status"] for item in results}
 
         expected = case["expected"]
@@ -96,6 +102,7 @@ def run_local_test_cases(image_path: str | None = None) -> Dict[str, Any]:
                 "input": {"brand_name": application_brand_name, "abv": application_abv},
                 "application_data": {
                     "brand_name": application_brand_name,
+                    "class_type": application_class_type,
                     "abv": application_abv,
                 },
                 "application_data_text": application_data_text,
