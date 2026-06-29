@@ -3,6 +3,7 @@ import sys
 import argparse
 import time
 import urllib3
+import re
 from pathlib import Path
 from io import BytesIO
 
@@ -16,7 +17,7 @@ except ModuleNotFoundError:
 
 
 URL_LOCAL = "http://127.0.0.1:8000/verify"
-URL_RENDER = "https://ttb-label-verifier.onrender.com/api/verify"
+URL_RENDER = "https://ttb-label-verifier-edgk.onrender.com/verify"
 
 #Choose the Testing URL based
 URL=URL_RENDER
@@ -161,6 +162,13 @@ def _normalize_status(raw_check):
     return None
 
 
+def _extract_abv_numeric(text):
+    match = re.search(r"(\d{1,2}(?:\.\d+)?)", str(text))
+    if match:
+        return match.group(1)
+    return ""
+
+
 def _extract_results_payload(result):
     """Normalize API response to a results-like list and missing_fields set."""
     normalized_results = []
@@ -170,7 +178,7 @@ def _extract_results_payload(result):
             field = _normalize_field_name(item.get("field"))
             status = item.get("status")
             if field and status:
-                normalized_results.append({"field": field, "status": str(status).lower(), **item})
+                normalized_results.append({**item, "field": field, "status": str(status).lower()})
     elif isinstance(result.get("checks"), list):
         for item in result["checks"]:
             if not isinstance(item, dict):
@@ -180,7 +188,7 @@ def _extract_results_payload(result):
             )
             status = _normalize_status(item)
             if field and status:
-                normalized_results.append({"field": field, "status": status, **item})
+                normalized_results.append({**item, "field": field, "status": status})
 
     if isinstance(result.get("missing_fields"), list):
         missing_fields = {
@@ -203,6 +211,7 @@ def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries, file_fie
 
     brand_name = lines[0]
     abv = test_case.get("abv_override", lines[1])
+    abv_numeric = _extract_abv_numeric(abv)
 
     # Send both current and legacy key aliases for compatibility across deployed API versions.
     data = {
@@ -210,8 +219,14 @@ def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries, file_fie
         "abv": abv,
         "brand": brand_name,
         "brandName": brand_name,
-        "alcohol_content": abv,
-        "alcoholContent": abv,
+        "Brand Name": brand_name,
+        "alcohol_content": abv_numeric,
+        "alcoholContent": abv_numeric,
+        "Alcohol Content": abv_numeric,
+        "alcohol_content_numeric": abv_numeric,
+        "alcoholContentNumeric": abv_numeric,
+        "abv_raw": abv,
+        "alcohol_content_raw": abv,
     }
 
     response = None

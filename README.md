@@ -32,6 +32,13 @@ While EasyOCR is slightly slower than Tesseract, the performance is acceptable f
 a prototype and provides better robustness against real-world label variations.
 The /verify endpoint uses EasyOCR to scan uploaded label images.
 
+Memory mode configuration:
+
+	OCR_MODE=lite     # default, single-pass OCR with lower memory footprint
+	OCR_MODE=accurate # optional, multi-pass OCR with preprocessing (higher memory)
+
+For Render free-tier services, keep OCR_MODE=lite to avoid out-of-memory restarts.
+
 Install dependencies:
 
 	python -m pip install -r requirements.txt

@@ -1,8 +1,6 @@
 from functools import lru_cache
+import os
 from typing import List
-
-import numpy as np
-from PIL import Image, ImageFilter, ImageOps
 
 
 @lru_cache(maxsize=1)
@@ -84,6 +82,32 @@ def _run_ocr_passes(reader, file_path: str) -> List[str]:
     return _dedupe_lines(all_lines)
 
 
+def _run_ocr_lite(reader, file_path: str) -> List[str]:
+    """Memory-friendly OCR pass for constrained environments like Render free tier."""
+    lines = reader.readtext(
+        file_path,
+        detail=0,
+        paragraph=False,
+        decoder="greedy",
+        batch_size=1,
+        workers=0,
+    )
+    return _dedupe_lines(lines)
+
+
+def _run_ocr_accurate(reader, file_path: str) -> List[str]:
+    """Higher-accuracy OCR mode with preprocessing variants (uses more memory)."""
+    import numpy as np
+    from PIL import Image, ImageFilter, ImageOps
+
+    return _run_ocr_passes(reader, file_path)
+
+
+def _selected_ocr_mode() -> str:
+    """Select OCR mode. Defaults to lite for safer production memory usage."""
+    return os.getenv("OCR_MODE", "lite").strip().lower()
+
+
 def extract_text_from_image(file_path: str) -> str:
     """Extract text from an image file using EasyOCR."""
     if not _is_supported_image(file_path):
@@ -92,7 +116,11 @@ def extract_text_from_image(file_path: str) -> str:
     reader = _get_reader()
 
     try:
-        lines = _run_ocr_passes(reader, file_path)
+        mode = _selected_ocr_mode()
+        if mode == "accurate":
+            lines = _run_ocr_accurate(reader, file_path)
+        else:
+            lines = _run_ocr_lite(reader, file_path)
     except Exception as exc:
         message = str(exc)
         if "Could not find a backend to open" in message:
