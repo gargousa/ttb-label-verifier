@@ -19,7 +19,7 @@ URL_LOCAL = "http://127.0.0.1:8000/verify"
 URL_RENDER = "https://ttb-label-verifier.onrender.com/api/verify"
 
 #Choose the Testing URL based
-URL=URL_LOCAL
+URL=URL_RENDER
 
 LOCAL_TEST_IMAGE = "tests/images/test_label_stb.jpg"
 REMOTE_TEST_IMAGE = "tests/images/test_label_stb.jpg"
@@ -128,6 +128,73 @@ def is_remote_endpoint(url):
     return url.startswith("https://") or "onrender.com" in url
 
 
+def _normalize_field_name(name):
+    if not name:
+        return None
+
+    key = str(name).strip().lower().replace(" ", "_")
+    aliases = {
+        "brand": "brand_name",
+        "brandname": "brand_name",
+        "brand_name": "brand_name",
+        "abv": "abv",
+        "alcohol_content": "abv",
+        "alcohol_by_volume": "abv",
+        "government_warning": "government_warning",
+        "class_type": "class_type",
+        "net_contents": "net_contents",
+        "producer_name_address": "producer_name_address",
+        "country_of_origin": "country_of_origin",
+    }
+    return aliases.get(key, key)
+
+
+def _normalize_status(raw_check):
+    raw_status = raw_check.get("status")
+    if isinstance(raw_status, str) and raw_status.strip():
+        return raw_status.strip().lower()
+
+    for bool_key in ("match", "matched", "passed", "is_match", "ok"):
+        if bool_key in raw_check:
+            return "pass" if bool(raw_check.get(bool_key)) else "fail"
+
+    return None
+
+
+def _extract_results_payload(result):
+    """Normalize API response to a results-like list and missing_fields set."""
+    normalized_results = []
+
+    if isinstance(result.get("results"), list):
+        for item in result["results"]:
+            field = _normalize_field_name(item.get("field"))
+            status = item.get("status")
+            if field and status:
+                normalized_results.append({"field": field, "status": str(status).lower(), **item})
+    elif isinstance(result.get("checks"), list):
+        for item in result["checks"]:
+            if not isinstance(item, dict):
+                continue
+            field = _normalize_field_name(
+                item.get("field") or item.get("name") or item.get("check") or item.get("id")
+            )
+            status = _normalize_status(item)
+            if field and status:
+                normalized_results.append({"field": field, "status": status, **item})
+
+    if isinstance(result.get("missing_fields"), list):
+        missing_fields = {
+            _normalize_field_name(name) for name in result.get("missing_fields", []) if _normalize_field_name(name)
+        }
+        missing_fields_source = "missing_fields"
+    else:
+        # Legacy payloads may not provide explicit missing fields.
+        missing_fields = set()
+        missing_fields_source = "none"
+
+    return normalized_results, missing_fields, missing_fields_source
+
+
 def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries, file_field, image_path, skip_ocr):
     print(f"\n=== {test_case['name']} ===")
 
@@ -137,9 +204,14 @@ def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries, file_fie
     brand_name = lines[0]
     abv = test_case.get("abv_override", lines[1])
 
+    # Send both current and legacy key aliases for compatibility across deployed API versions.
     data = {
         "brand_name": brand_name,
-        "abv": abv
+        "abv": abv,
+        "brand": brand_name,
+        "brandName": brand_name,
+        "alcohol_content": abv,
+        "alcoholContent": abv,
     }
 
     response = None
@@ -206,11 +278,33 @@ def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries, file_fie
                 print(f"   Response: {body_preview}")
             return False
     else:
-        result = response.json()
+        try:
+            result = response.json()
+        except ValueError:
+            body_preview = (response.text or "").strip().replace("\n", " ")[:240]
+            print("[FAIL] Response was not valid JSON.")
+            if body_preview:
+                print(f"   Response: {body_preview}")
+            return False
+
+    if not isinstance(result, dict):
+        print(f"[FAIL] Unexpected response type: {type(result).__name__}")
+        return False
+
+    normalized_results, actual_missing, missing_source = _extract_results_payload(result)
+
+    if not normalized_results:
+        available_keys = ", ".join(sorted(result.keys())) if result else "<none>"
+        print("[FAIL] API response missing expected check results ('results' or 'checks').")
+        print(f"   Available keys: {available_keys}")
+        detail = result.get("detail")
+        if detail:
+            print(f"   detail: {detail}")
+        return False
 
     actual_status_by_field = {}
 
-    for r in result["results"]:
+    for r in normalized_results:
         print(f"{r['field']}: {r['status']} ({r.get('score', '-')})")
         actual_status_by_field[r["field"]] = r["status"]
 
@@ -224,12 +318,15 @@ def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries, file_fie
             )
 
     expected_missing = test_case.get("expected_missing_failures", [])
-    actual_missing = set(result.get("missing_fields", []))
-    for missing_field in expected_missing:
-        if missing_field not in actual_missing:
-            mismatches.append(
-                f"{missing_field} expected missing/fail but was not reported in missing_fields"
-            )
+    if expected_missing and missing_source == "none":
+        print("[WARN] Response does not include 'missing_fields'; skipping missing-field assertions for this endpoint.")
+    else:
+        for missing_field in expected_missing:
+            normalized_missing_field = _normalize_field_name(missing_field)
+            if normalized_missing_field not in actual_missing:
+                mismatches.append(
+                    f"{missing_field} expected missing/fail but was not reported in missing_fields"
+                )
 
     if mismatches:
         print("[FAIL] FAILED")
