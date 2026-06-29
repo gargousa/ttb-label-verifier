@@ -1,7 +1,8 @@
 TEST_CASES = [
     {
         "name": "LABEL: EXACT MATCH",
-        "file": "tests/data/test_label_stb_exact.txt",
+        "application_data_file": "tests/data/application_data.txt",
+        "image_file": "tests/images/stb_exact_brand_abv.jpg",
         "expected": {
             "brand_name": "pass",
             "abv": "pass",
@@ -16,7 +17,8 @@ TEST_CASES = [
     },
     {
         "name": "LABEL: FUZZY MATCH",
-        "file": "tests/data/test_label_stb_fuzzy.txt",
+        "application_data_file": "tests/data/stb_fuzzy_application_data.txt",
+        "image_file": "tests/images/stb_fuzzy_brand_abv.jpg",
         "expected": {
             "brand_name": "pass",
             "abv": "pass",
@@ -31,7 +33,8 @@ TEST_CASES = [
     },
     {
         "name": "LABEL: FAIL CASE",
-        "file": "tests/data/test_label_stb_fail.txt",
+        "application_data_file": "tests/data/application_data.txt",
+        "image_file": "tests/images/stb_fail_brand.jpg",
         "expected": {
             "brand_name": "fail",
             "abv": "pass",
@@ -46,7 +49,8 @@ TEST_CASES = [
     },
     {
         "name": "LABEL: ABV MISMATCH",
-        "file": "tests/data/test_label_stb_exact.txt",
+        "application_data_file": "tests/data/application_data.txt",
+        "image_file": "tests/images/stb_exact_brand_abv_mismatch.jpg",
         "abv_override": "40% ALC/VOL",
         "expected": {
             "brand_name": "pass",
@@ -62,7 +66,8 @@ TEST_CASES = [
     },
     {
         "name": "LABEL: ABV WITHIN TOLERANCE",
-        "file": "tests/data/test_label_stb_exact.txt",
+        "application_data_file": "tests/data/application_data.txt",
+        "image_file": "tests/images/stb_exact_brand_abv_tol.jpg",
         "abv_override": "44% ALC/VOL",
         "expected": {
             "brand_name": "pass",

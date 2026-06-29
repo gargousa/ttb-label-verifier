@@ -10,46 +10,61 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def _load_case_inputs(case: Dict[str, Any], repo_root: Path) -> tuple[str, str]:
-    case_file = repo_root / case["file"]
-    lines = case_file.read_text(encoding="utf-8").strip().split("\n")
+def _read_case_lines(file_path: Path) -> list[str]:
+    return [line.strip() for line in file_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def _load_application_inputs(case: Dict[str, Any], repo_root: Path) -> tuple[str, str, str]:
+    application_file = repo_root / case.get("application_data_file", "tests/data/application_data.txt")
+    lines = _read_case_lines(application_file)
     brand_name = lines[0]
-    abv = case.get("abv_override", lines[1])
-    return brand_name, abv
+    abv = lines[2]
+    return brand_name, abv, "\n".join(lines)
+
+
+def _resolve_case_image_path(case: Dict[str, Any], repo_root: Path, default_image_path: str | None) -> Path:
+    image_file = case.get("image_file") or default_image_path or "tests/images/test_label_stb.jpg"
+    return repo_root / image_file
 
 
 def run_local_test_cases(image_path: str | None = None) -> Dict[str, Any]:
     root = _repo_root()
-    resolved_image = root / (image_path or "tests/images/test_label_stb.jpg")
+    default_image = root / (image_path or "tests/images/test_label_stb.jpg")
 
-    if not resolved_image.exists():
-        return {
-            "ok": False,
-            "error": f"Image not found: {resolved_image}",
-            "cases": [],
-            "passed": 0,
-            "failed": 0,
-        }
-
-    try:
-        extracted_text = extract_text_from_image(str(resolved_image))
-    except Exception as exc:
-        return {
-            "ok": False,
-            "error": f"OCR failed: {exc}",
-            "cases": [],
-            "passed": 0,
-            "failed": 0,
-        }
+    extracted_text_cache: Dict[Path, str] = {}
 
     case_results: List[Dict[str, Any]] = []
     passed = 0
     failed = 0
 
     for case in TEST_CASES:
-        brand_name, abv = _load_case_inputs(case, root)
+        application_brand_name, application_abv, application_data_text = _load_application_inputs(case, root)
+        resolved_image = _resolve_case_image_path(case, root, image_path)
 
-        results = validate_fields(brand_name, abv, extracted_text)
+        if not resolved_image.exists():
+            return {
+                "ok": False,
+                "error": f"Image not found: {resolved_image}",
+                "cases": [],
+                "passed": 0,
+                "failed": 0,
+            }
+
+        if resolved_image not in extracted_text_cache:
+            try:
+                extracted_text_cache[resolved_image] = extract_text_from_image(str(resolved_image))
+            except Exception as exc:
+                return {
+                    "ok": False,
+                    "error": f"OCR failed for {resolved_image}: {exc}",
+                    "cases": [],
+                    "passed": 0,
+                    "failed": 0,
+                }
+
+        extracted_text = extracted_text_cache[resolved_image]
+
+        results = validate_fields(application_brand_name, application_abv, extracted_text)
         actual_status_by_field = {item["field"]: item["status"] for item in results}
 
         expected = case["expected"]
@@ -78,9 +93,24 @@ def run_local_test_cases(image_path: str | None = None) -> Dict[str, Any]:
         case_results.append(
             {
                 "name": case["name"],
-                "input": {"brand_name": brand_name, "abv": abv},
+                "input": {"brand_name": application_brand_name, "abv": application_abv},
+                "application_data": {
+                    "brand_name": application_brand_name,
+                    "abv": application_abv,
+                },
+                "application_data_text": application_data_text,
+                "image_path": str(resolved_image),
+                "extracted_text": extracted_text,
                 "expected": expected,
                 "actual": actual_status_by_field,
+                "checks": [
+                    {
+                        "field": item.get("field"),
+                        "status": item.get("status"),
+                        "score": item.get("score"),
+                    }
+                    for item in results
+                ],
                 "missing_fields": sorted(actual_missing),
                 "mismatches": mismatches,
                 "passed": passed_case,
@@ -89,8 +119,7 @@ def run_local_test_cases(image_path: str | None = None) -> Dict[str, Any]:
 
     return {
         "ok": True,
-        "image_path": str(resolved_image),
-        "extracted_text": extracted_text,
+        "image_path": str(default_image),
         "cases": case_results,
         "passed": passed,
         "failed": failed,
