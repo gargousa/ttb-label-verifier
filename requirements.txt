@@ -5,4 +5,4 @@ pytest
 httpx
 rapidfuzz
 requests
-requests 
+easyocr

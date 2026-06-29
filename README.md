@@ -21,3 +21,20 @@ Run tests locally:
 
 Note: the application does not execute the test suite when the API starts.
 Tests are run separately with pytest (or automatically in CI on push/PR).
+
+## OCR
+OCR Design Choice:
+
+The prototype uses EasyOCR to avoid system-level dependencies (e.g., Tesseract binaries),
+making it easier to deploy in restricted environments.
+
+While EasyOCR is slightly slower than Tesseract, the performance is acceptable for
+a prototype and provides better robustness against real-world label variations.
+The /verify endpoint uses EasyOCR to scan uploaded label images.
+
+Install dependencies:
+
+	python -m pip install -r requirements.txt
+
+If OCR cannot detect text from an uploaded image, the API returns HTTP 400.
+If OCR dependencies are missing or OCR processing fails, the API returns HTTP 500.

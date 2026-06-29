@@ -47,3 +47,30 @@ def test_brand_fuzzy_match_warning():
 
     assert result[0]["status"] == "warning"
     assert result[0]["score"] >= 85
+
+def test_abv_exact_percent():
+    extracted = "45% ALC/VOL"
+    result = validate_fields("X", "45%", extracted)
+
+    assert result[1]["status"] == "pass"
+
+
+def test_abv_proof_conversion():
+    extracted = "90 PROOF"
+    result = validate_fields("X", "45%", extracted)
+
+    assert result[1]["status"] == "pass"
+
+
+def test_abv_expected_proof_matches_percent_extracted():
+    extracted = "45% ALC/VOL"
+    result = validate_fields("X", "90 PROOF", extracted)
+
+    assert result[1]["status"] == "pass"
+
+
+def test_abv_mismatch():
+    extracted = "40% ALC/VOL"
+    result = validate_fields("X", "45%", extracted)
+
+    assert result[1]["status"] == "fail"

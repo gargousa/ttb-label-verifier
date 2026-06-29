@@ -1,12 +1,14 @@
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 import shutil
 import os
 
 try:
-    from app.validation import validate_fields
+    from app.validation import validate_fields, get_supported_checks, get_missing_fields
+    from app.ocr import extract_text_from_image
 except ModuleNotFoundError:
-    from validation import validate_fields
+    from validation import validate_fields, get_supported_checks, get_missing_fields
+    from ocr import extract_text_from_image
 
 app = FastAPI()
 
@@ -24,6 +26,11 @@ def root():
 def verify_info():
     return {"message": "Use POST method with form-data to verify labels"}
 
+
+@app.get("/checks")
+def checks_info():
+    return {"supported_checks": get_supported_checks()}
+
 @app.post("/verify")
 async def verify_label(
     brand_name: str = Form(...),
@@ -35,14 +42,20 @@ async def verify_label(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # --- Placeholder OCR (replace later) ---
-    with open("tests/data/label_text.txt") as f:
-        extracted_text = f.read()
+    try:
+        extracted_text = extract_text_from_image(file_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     #validation tests
     results = validate_fields(brand_name, abv, extracted_text)
+    missing_fields = get_missing_fields(results)
 
     return JSONResponse({
         "extracted_text": extracted_text,
-        "results": results
+        "supported_checks": get_supported_checks(),
+        "missing_fields": missing_fields,
+        "results": results,
     })
