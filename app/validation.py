@@ -81,6 +81,11 @@ def normalize_brand_text(text):
     normalized = re.sub(r"[^a-z0-9]+", " ", text.lower())
     return re.sub(r"\s+", " ", normalized).strip()
 
+
+def normalize_brand_compact(text):
+    """Compact normalization that removes all non-alphanumeric characters."""
+    return re.sub(r"[^a-z0-9]+", "", text.lower())
+
 def validate_fields(expected_brand, expected_abv, extracted_text):
     results = []
 
@@ -94,11 +99,17 @@ def validate_fields(expected_brand, expected_abv, extracted_text):
     else:
         expected_brand_normalized = normalize_brand_text(expected_brand)
         extracted_normalized = normalize_brand_text(extracted_text)
+        expected_brand_compact = normalize_brand_compact(expected_brand)
+        extracted_compact = normalize_brand_compact(extracted_text)
 
         # OCR often splits punctuation/newlines. Accept normalized exact phrase for longer brands.
         if len(expected_brand_normalized.split()) >= 3 and re.search(
             rf"\b{re.escape(expected_brand_normalized)}\b", extracted_normalized
         ):
+            status = "pass"
+            score = 100
+        elif len(expected_brand_compact) >= 12 and expected_brand_compact in extracted_compact:
+            # OCR may collapse spaces/punctuation for long names (e.g. STONE'STHROWDISTILLERY).
             status = "pass"
             score = 100
         else:
