@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Label Verifier Home</title>
+    <style>
+        body { font-family: Segoe UI, Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 16px; }
+        h1 { margin-bottom: 8px; }
+        p { color: #444; margin-top: 0; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 22px; }
+        .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; background: #fff; }
+        .card h2 { margin-top: 0; font-size: 18px; }
+        .card p { min-height: 48px; }
+        .btn {
+            display: inline-block;
+            text-decoration: none;
+            border: 1px solid #0a7f3f;
+            background: #0a7f3f;
+            color: #fff;
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-weight: 600;
+        }
+        .btn.secondary {
+            border-color: #1f6feb;
+            background: #1f6feb;
+        }
+    </style>
+</head>
+<body>
+    <h1>TTB Label Verifier</h1>
+    <p>Select a UI workflow.</p>
+
+    <div class="grid">
+        <div class="card">
+            <h2>Upload Verification UI</h2>
+            <p>Upload one label image and one application-data text file to run direct verification.</p>
+            <a class="btn" href="/ui">Open Upload Verification</a>
+        </div>
+
+        <div class="card">
+            <h2>Test Runner UI</h2>
+            <p>Run the configured test suite cases and inspect expected versus extracted results.</p>
+            <a class="btn secondary" href="/tests/ui">Open Test Runner</a>
+        </div>
+    </div>
+</body>
+</html>

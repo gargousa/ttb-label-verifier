@@ -18,6 +18,14 @@ def test_upload_ui_page_available():
     assert "Label Verification UI" in response.text
 
 
+def test_index_ui_page_available():
+    response = client.get("/index")
+    assert response.status_code == 200
+    assert "TTB Label Verifier" in response.text
+    assert "/ui" in response.text
+    assert "/tests/ui" in response.text
+
+
 def test_checks_endpoint():
     response = client.get("/checks")
 
