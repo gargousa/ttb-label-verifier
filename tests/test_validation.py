@@ -14,6 +14,7 @@ def test_brand_case_insensitive():
     result = validate_fields("STONE'S THROW", "45%", extracted)
 
     assert result[0]["status"] == "pass"
+    assert result[0]["match_method"] == "exact_substring"
 
 
 def test_abv_mismatch():
@@ -53,6 +54,7 @@ def test_brand_fuzzy_match_warning():
     assert result[0]["status"] == "warning"
     assert result[0]["score"] >= 85
     assert result[0]["score"] < 100
+    assert result[0]["match_method"] == "fuzzy"
 
 
 def test_brand_fuzzy_match_warning_for_distillery_case():
@@ -68,6 +70,15 @@ def test_brand_compact_match_pass_for_collapsed_spaces():
     result = validate_fields("STONE'S THROW DISTILLERY", "45%", extracted)
 
     assert result[0]["status"] == "pass"
+    assert result[0]["match_method"] == "compact_normalized"
+
+
+def test_brand_extra_letter_falls_through_to_fuzzy_not_compact():
+    extracted = "STONE'STHROWDISTILLERYY 45%"
+    result = validate_fields("STONE'S THROW DISTILLERY", "45%", extracted)
+
+    assert result[0]["status"] == "warning"
+    assert result[0]["match_method"] == "fuzzy"
 
 def test_abv_exact_percent():
     extracted = "45% ALC/VOL"
@@ -126,6 +137,15 @@ def test_class_type_exact_match_passes():
     class_type = next(item for item in result if item["field"] == "class_type")
     assert class_type["status"] == "pass"
     assert class_type["score"] == 100
+
+
+def test_class_type_compact_match_passes_for_collapsed_spacing():
+    extracted = "Kentucky StraightBourbon Whiskey"
+    result = validate_fields("X", "45%", extracted, expected_class_type="Kentucky Straight Bourbon Whiskey")
+
+    class_type = next(item for item in result if item["field"] == "class_type")
+    assert class_type["status"] == "pass"
+    assert class_type["match_method"] == "compact_normalized"
 
 
 def test_class_type_fuzzy_match_warns():

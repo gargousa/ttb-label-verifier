@@ -6,8 +6,14 @@
     <style>
         body { font-family: Segoe UI, Arial, sans-serif; max-width: 1100px; margin: 24px auto; padding: 0 16px; }
         .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
-        input[type="file"] { padding: 6px; }
-        button { padding: 10px 14px; font-size: 14px; cursor: pointer; }
+        input[type="file"] { padding: 0; }
+        input[type="file"]::file-selector-button,
+        button {
+            padding: 10px 14px;
+            font-size: 14px;
+            line-height: 1.2;
+            cursor: pointer;
+        }
         .summary { margin: 14px 0; font-weight: 600; }
         .ok { color: #0a7f3f; }
         .warn { color: #b06b00; }
@@ -46,7 +52,7 @@
     <h3>Checks</h3>
     <table>
         <thead>
-            <tr><th>Check</th><th>Application Data</th><th>Extracted Data</th><th>Status</th><th>Score</th></tr>
+            <tr><th>Check</th><th>Application Data</th><th>Extracted Data</th><th>Method</th><th>Status</th><th>Score</th></tr>
         </thead>
         <tbody id="checkRows"></tbody>
     </table>
@@ -74,6 +80,25 @@
             return `${match[1]} ${unit}`;
         }
 
+        function extractRawNetContents(rawText) {
+            const match = String(rawText || '').match(/\b\d{1,4}(?:\.\d{1,2})?\s*(?:ml|l|cl|fl\.?\s*oz)\b/i);
+            return match ? match[0] : null;
+        }
+
+        function extractRawAbv(rawText) {
+            const lines = String(rawText || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+            const fromLine = lines.find(line => /%|pro[o0]f/i.test(line));
+            if (fromLine) return fromLine;
+            const inline = String(rawText || '').match(/\d{1,2}(?:\.\d+)?\s*%.*?(?:pro[o0]f\)?|$)/i);
+            return inline ? inline[0].trim() : null;
+        }
+
+        function extractRawClassType(rawText) {
+            const lines = String(rawText || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+            const candidate = lines.find(line => /(whiskey|whisky|vodka|gin|tequila|rum|brandy|liqueur|cordial)/i.test(line));
+            return candidate || null;
+        }
+
         function extractedSnippet(rawText, maxLines = 2) {
             const lines = String(rawText || '')
                 .split(/\r?\n/)
@@ -95,16 +120,19 @@
             if (field === 'class_type') {
                 return {
                     application: payload.application_data?.class_type || '-',
-                    extracted: check.detected || '(not detected)'
+                    extracted: extractRawClassType(payload.extracted_text) || check.detected || '(not detected)'
                 };
             }
 
             if (field === 'abv') {
-                let extracted = '(not detected)';
-                if (check.detected_percent != null) {
-                    extracted = `${check.detected_percent}%`;
-                } else if (check.detected_proof != null) {
-                    extracted = `${check.detected_proof}% (from proof)`;
+                const rawExtracted = extractRawAbv(payload.extracted_text);
+                let extracted = rawExtracted || '(not detected)';
+                if (!rawExtracted) {
+                    if (check.detected_percent != null) {
+                        extracted = `${check.detected_percent}%`;
+                    } else if (check.detected_proof != null) {
+                        extracted = `${check.detected_proof}% (from proof)`;
+                    }
                 }
                 return {
                     application: payload.application_data?.abv || '-',
@@ -115,7 +143,7 @@
             if (field === 'net_contents') {
                 return {
                     application: extractExpectedNetContents(payload.application_data?.raw_text),
-                    extracted: check.detected || '(not detected)'
+                    extracted: extractRawNetContents(payload.extracted_text) || check.detected || '(not detected)'
                 };
             }
 
@@ -168,17 +196,32 @@
                     `Brand: ${data.application_data.brand_name}`,
                     `Class Type: ${data.application_data.class_type}`,
                     `ABV: ${data.application_data.abv}`,
+                    `Net Contents: ${extractExpectedNetContents(data.application_data.raw_text)}`,
                 ];
                 applicationDataText.textContent = appDataLines.join('\n');
                 extractedText.textContent = data.extracted_text || '(empty)';
 
-                for (const check of (data.results || [])) {
+                const displayOrder = {
+                    brand_name: 1,
+                    class_type: 2,
+                    abv: 3,
+                    net_contents: 4,
+                };
+
+                const orderedResults = [...(data.results || [])].sort((a, b) => {
+                    const left = displayOrder[a.field] || 999;
+                    const right = displayOrder[b.field] || 999;
+                    return left - right;
+                });
+
+                for (const check of orderedResults) {
                     const comparison = getCheckComparison(check, data);
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td>${escapeHtml(check.field || '-')}</td>
                         <td>${escapeHtml(comparison.application)}</td>
                         <td>${escapeHtml(comparison.extracted)}</td>
+                        <td>${escapeHtml(check.match_method || '-')}</td>
                         <td class="${statusClass((check.status || '').toLowerCase())}">${escapeHtml((check.status || '-').toUpperCase())}</td>
                         <td>${escapeHtml(check.score == null ? '-' : check.score)}</td>
                     `;
