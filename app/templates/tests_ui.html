@@ -19,9 +19,14 @@
         table { width: 100%; border-collapse: collapse; margin-top: 12px; }
         th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; text-align: left; }
         th { background: #f3f4f6; }
+        .checks-hint { margin: 6px 0 10px; color: #4b5563; font-size: 12px; }
         .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .comparison > div { min-width: 0; }
         .comparison h4 { margin: 0 0 6px; font-size: 13px; }
+        .advice { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+        .advice-missing { color: #b42318; font-weight: 600; }
+        .advice-check { color: #92400e; font-weight: 600; }
+        .advice-na { color: #4b5563; }
     </style>
 </head>
 <body>
@@ -36,9 +41,25 @@
     </div>
     <div id="summary" class="summary"></div>
     <h3>Case Results</h3>
+    <p class="checks-hint">Checks format: field: status (score) [method]. Score is confidence (0-100); method is the matching strategy used.</p>
     <table>
+        <colgroup>
+            <col style="width: 13%;" />
+            <col style="width: 9%;" />
+            <col style="width: 30%;" />
+            <col style="width: 26%;" />
+            <col style="width: 12%;" />
+            <col style="width: 10%;" />
+        </colgroup>
         <thead>
-            <tr><th>Case</th><th>Status</th><th>Comparison</th><th>Checks</th><th>Mismatches</th></tr>
+            <tr>
+                <th>Case</th>
+                <th>Status</th>
+                <th>Comparison</th>
+                <th title="Format: field: status (score) [method]">Checks</th>
+                <th title="Concise advice for likely missing label items">Missing Items Advice</th>
+                <th>Mismatches</th>
+            </tr>
         </thead>
         <tbody id="rows"></tbody>
     </table>
@@ -79,6 +100,22 @@
                 checkLines.push(`${check.field}: ${check.status} (${scoreText}) [${methodText}]`);
             }
 
+            const advice = (c.missing_items_advice || []).map((item) => {
+                const status = String(item.status || '').toLowerCase();
+                const label = String(item.label || '-');
+                let klass = 'advice-na';
+                let text = label;
+
+                if (status === 'missing') {
+                    klass = 'advice-missing';
+                } else if (status === 'check') {
+                    klass = 'advice-check';
+                    text = `(${label})`;
+                }
+
+                return `<span class="${klass}">${escapeHtml(text)}</span>`;
+            }).join('');
+
             const comparisonHtml = `
                 <div class="comparison">
                     <div>
@@ -96,7 +133,8 @@
                 <td>${escapeHtml(c.name)}</td>
                 <td class="${c.passed ? 'ok' : 'bad'}">${c.passed ? 'PASS' : 'FAIL'}</td>
                 <td>${comparisonHtml}</td>
-                <td><pre style="margin:0;">${escapeHtml(checkLines.join('\n') || '-')}</pre></td>
+                <td><pre style="margin:0;" title="field: status (score) [method]">${escapeHtml(checkLines.join('\n') || '-')}</pre></td>
+                <td><div class="advice">${advice || '<span class="advice-na">No Advice</span>'}</div></td>
                 <td><pre style="margin:0;">${escapeHtml(mismatches)}</pre></td>
             `;
             rows.appendChild(tr);

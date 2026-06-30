@@ -36,6 +36,34 @@ def _expected_status_values(expected_status: Any) -> list[str]:
     return [str(expected_status).strip().lower()]
 
 
+def _build_missing_items_advice(extracted_text: str) -> list[dict[str, str]]:
+    text = str(extracted_text or "").lower()
+
+    has_gov_warning = (
+        "government warning" in text
+        or "surgeon general" in text
+        or "pregnancy" in text and "alcohol" in text
+    )
+
+    has_producer_address = (
+        "distilled by" in text
+        or "bottled by" in text
+        or "produced by" in text
+        or "llc" in text
+        or "inc" in text
+        or "street" in text
+        or "st " in text
+        or " road" in text
+        or " rd" in text
+    )
+
+    return [
+        {"label": "Gov Warning", "status": "Check" if has_gov_warning else "Missing"},
+        {"label": "Producer Address", "status": "Check" if has_producer_address else "Missing"},
+        {"label": "Origin", "status": "Check"},
+    ]
+
+
 def _run_single_case(
     case: Dict[str, Any],
     repo_root: Path,
@@ -107,6 +135,7 @@ def _run_single_case(
             }
             for item in results
         ],
+        "missing_items_advice": _build_missing_items_advice(extracted_text),
         "missing_fields": sorted(actual_missing),
         "mismatches": mismatches,
         "passed": passed_case,

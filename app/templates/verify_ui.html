@@ -24,6 +24,10 @@
         table { width: 100%; border-collapse: collapse; margin-top: 12px; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
         th { background: #f3f4f6; }
+        .advice { display: flex; flex-direction: column; gap: 4px; margin: 10px 0 14px; font-size: 13px; }
+        .advice-missing { color: #b42318; font-weight: 600; }
+        .advice-check { color: #92400e; font-weight: 600; }
+        .advice-na { color: #4b5563; }
     </style>
 </head>
 <body>
@@ -57,11 +61,17 @@
         <tbody id="checkRows"></tbody>
     </table>
 
+    <h3>Missing Items Advice</h3>
+    <div id="missingAdvice" class="advice">
+        <span class="advice-na">(not run yet)</span>
+    </div>
+
     <script>
         const runBtn = document.getElementById('runBtn');
         const summary = document.getElementById('summary');
         const applicationDataText = document.getElementById('applicationDataText');
         const extractedText = document.getElementById('extractedText');
+        const missingAdvice = document.getElementById('missingAdvice');
         const checkRows = document.getElementById('checkRows');
 
         function escapeHtml(text) {
@@ -156,6 +166,37 @@
             return 'bad';
         }
 
+        function buildMissingItemsAdvice(rawText) {
+            const text = String(rawText || '').toLowerCase();
+            const hasGovWarning = text.includes('government warning') || text.includes('surgeon general') || (text.includes('pregnancy') && text.includes('alcohol'));
+            const hasProducerAddress = text.includes('distilled by') || text.includes('bottled by') || text.includes('produced by') || text.includes('llc') || text.includes('inc') || text.includes('street') || text.includes('st ') || text.includes(' road') || text.includes(' rd');
+            return [
+                { label: 'Gov Warning', status: hasGovWarning ? 'Check' : 'Missing' },
+                { label: 'Producer Address', status: hasProducerAddress ? 'Check' : 'Missing' },
+                { label: 'Origin', status: 'Check' },
+            ];
+        }
+
+        function renderMissingItemsAdvice(items) {
+            const html = (items || []).map((item) => {
+                const state = String(item.status || '').toLowerCase();
+                const label = String(item.label || '-');
+                let css = 'advice-na';
+                let text = label;
+
+                if (state === 'missing') {
+                    css = 'advice-missing';
+                } else if (state === 'check') {
+                    css = 'advice-check';
+                    text = `(${label})`;
+                }
+
+                return `<span class="${css}">${escapeHtml(text)}</span>`;
+            }).join('');
+
+            missingAdvice.innerHTML = html || '<span class="advice-na">No Advice</span>';
+        }
+
         async function runVerification() {
             const imageInput = document.getElementById('labelImage');
             const appDataInput = document.getElementById('applicationData');
@@ -169,6 +210,7 @@
             runBtn.textContent = 'Verifying...';
             summary.textContent = '';
             checkRows.innerHTML = '';
+            missingAdvice.innerHTML = '<span class="advice-na">(processing)</span>';
 
             try {
                 const formData = new FormData();
@@ -186,6 +228,7 @@
                     summary.innerHTML = `<span class="bad">${detail}</span>`;
                     applicationDataText.textContent = '(error)';
                     extractedText.textContent = '(error)';
+                    missingAdvice.innerHTML = '<span class="advice-na">(error)</span>';
                     return;
                 }
 
@@ -200,6 +243,7 @@
                 ];
                 applicationDataText.textContent = appDataLines.join('\n');
                 extractedText.textContent = data.extracted_text || '(empty)';
+                renderMissingItemsAdvice(buildMissingItemsAdvice(data.extracted_text));
 
                 const displayOrder = {
                     brand_name: 1,
@@ -229,6 +273,7 @@
                 }
             } catch (err) {
                 summary.innerHTML = `<span class="bad">${String(err)}</span>`;
+                missingAdvice.innerHTML = '<span class="advice-na">(error)</span>';
             } finally {
                 runBtn.disabled = false;
                 runBtn.textContent = 'Verify Label';
