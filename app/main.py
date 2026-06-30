@@ -19,6 +19,7 @@ UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 TEST_UI_FILE = Path(__file__).resolve().parent / "templates" / "tests_ui.html"
 VERIFY_UI_FILE = Path(__file__).resolve().parent / "templates" / "verify_ui.html"
+INDEX_UI_FILE = Path(__file__).resolve().parent / "templates" / "index_ui.html"
 
 print(f"Running FastAPI server. Upload directory: {UPLOAD_DIR}      ")
 
@@ -65,6 +66,11 @@ def checks_info():
 @app.get("/tests/ui", response_class=HTMLResponse)
 def tests_ui():
     return TEST_UI_FILE.read_text(encoding="utf-8")
+
+
+@app.get("/index", response_class=HTMLResponse)
+def index_ui():
+    return INDEX_UI_FILE.read_text(encoding="utf-8")
 
 
 @app.get("/ui", response_class=HTMLResponse)

@@ -48,6 +48,22 @@ All OCR and validation logic runs locally within the application process and doe
 
 Note: The free-tier deployment may incur a 30–60 second cold start after inactivity.
 
+## UI Endpoints
+
+Three browser UIs are available:
+
+- Index UI (landing page): `/index`
+	- Local: `http://127.0.0.1:8000/index`
+	- Render: `https://ttb-label-verifier-edgk.onrender.com/index`
+
+- Test runner UI: `/tests/ui`
+	- Local: `http://127.0.0.1:8000/tests/ui`
+	- Render: `https://ttb-label-verifier-edgk.onrender.com/tests/ui`
+
+- Upload verification UI: `/ui`
+	- Local: `http://127.0.0.1:8000/ui`
+	- Render: `https://ttb-label-verifier-edgk.onrender.com/ui`
+
 
 ## Testing
 
