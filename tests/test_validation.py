@@ -80,6 +80,7 @@ def test_brand_extra_letter_falls_through_to_fuzzy_not_compact():
     assert result[0]["status"] == "warning"
     assert result[0]["match_method"] == "fuzzy"
 
+
 def test_abv_exact_percent():
     extracted = "45% ALC/VOL"
     result = validate_fields("X", "45%", extracted)
