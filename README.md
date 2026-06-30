@@ -1,9 +1,61 @@
 # ttb-label-verifier
-AI-Powered Alcohol Label Verification App
+TTB Label Verification Take-Home Submission
 
-## Prototype Scope
+## Submission Notes
 
-This repository is a prototype focused on validating a core subset of label checks.
+This repository contains a standalone label verification app for the take-home.
+
+- Deployed app: https://ttb-label-verifier-edgk.onrender.com/
+- Local run: FastAPI app with browser UIs for verification and test review
+- Testing: pytest-based automated checks plus a browser test runner UI
+
+## What's Included
+
+- Upload-based label verification UI
+- Live test runner UI with streaming case results
+- Deterministic validation for brand, class/type, ABV, and net contents
+- Local OCR and per-check missing-items guidance
+
+## Test Data and Images
+
+The repository includes sample assets for local testing and review:
+
+- `data/` contains the text fixtures used by the test runner and validation examples.
+- `images/` contains sample label images for OCR and verification testing.
+- `uploads/` is used as the local working folder for uploaded files during app runs.
+
+## Overview
+
+The app compares application data to label text using a local OCR pipeline and deterministic validation rules.
+
+- FastAPI serves the API and browser UIs.
+- RapidOCR extracts text from uploaded label images.
+- Dedicated validation modules evaluate the supported checks.
+- The test runner UI exercises the same backend logic used by the upload verification flow.
+
+## High-Level Architecture
+
+The flow is:
+
+Reviewer uses the browser UI -> FastAPI endpoints -> local OCR -> validation modules -> per-check results and missing-items advice -> back to the UI.
+
+## How to Review
+
+The fastest way to evaluate the app is:
+
+1. Open the deployed app and use the upload verification UI at `/ui`.
+2. Open the test runner UI at `/tests/ui` to see the built-in cases and live case-by-case results.
+3. Run `pytest` locally if you want to confirm the automated coverage.
+
+What to expect:
+
+- Core checks are deterministic and run locally.
+- The UI shows the extracted label text, per-check outcomes, and concise missing-items guidance.
+- Missing roadmap checks are intentionally left out of scope.
+
+## Scope
+
+This app covers the core verification flow and a focused subset of label checks.
 
 Implemented checks (current):
 
@@ -18,16 +70,17 @@ Not implemented yet (planned for later phases):
 - producer_name_address
 - country_of_origin
 
-Current behavior reflects this scope:
+Implemented checks return pass/warning/fail results with scores, and the remaining checks are surfaced as missing until their validation logic is added.
 
-- Implemented checks return active pass/warning/fail results and scores.
-- Not-yet-implemented checks are acknowledged in the API metadata and are reported as missing until their validation logic is added.
+## Assumptions and Limitations
 
-This staged approach is intentional for the prototype and helps keep OCR + validation behavior stable while remaining checks are added incrementally.
+- Application data for the upload UI is expected to be UTF-8 text with brand name, class/type, and ABV on separate lines.
+- The app is intentionally local-first and does not depend on external AI or cloud services during verification.
+- The missing checks listed in the roadmap remain out of scope.
 
 ## Roadmap
 
-Planned order for future check implementation:
+Future work, in order:
 
 1. government_warning
 2. producer_name_address
@@ -42,11 +95,7 @@ Each roadmap item will be added with:
 
 ## Deployment
 
-This application is deployed on Render for ease of evaluation.
-
-All OCR and validation logic runs locally within the application process and does not require outbound network access. This allows the solution to be deployed in restricted environments where outbound traffic is blocked.
-
-Note: The free-tier deployment may incur a 30–60 second cold start after inactivity.
+The app is deployed on Render for evaluation. OCR and validation run locally in the app process, so the solution does not depend on outbound network access. The free-tier deployment may incur a 30–60 second cold start after inactivity.
 
 ## UI Endpoints
 
@@ -65,38 +114,29 @@ Three browser UIs are available:
 	- Render: `https://ttb-label-verifier-edgk.onrender.com/ui`
 
 
-## Testing
+## Setup and Testing
 
-Run tests locally:
+Run the app and tests locally:
 
 	python -m venv .venv
 	.venv\Scripts\Activate.ps1
 	python -m pip install -r requirements.txt
 	python -m pytest -v
 
+To run the app manually:
+
+	python -m uvicorn app.main:app --reload
+
 Note: the application does not execute the test suite when the API starts.
 Tests are run separately with pytest (or automatically in CI on push/PR).
 
+Testing evidence is recorded in [Testing_Evidence.pdf](Testing_Evidence.pdf).
+
 ## OCR
-OCR Design Choice:
 
-The active OCR implementation uses RapidOCR (ONNX Runtime) to avoid system-level
-dependencies (e.g., Tesseract binaries) and reduce memory usage on constrained deployments.
+OCR is handled locally with RapidOCR (ONNX Runtime) to avoid system-level dependencies such as Tesseract.
 
-EasyOCR is still listed as a dependency for compatibility experiments, but it is not called
-by the current OCR pipeline.
+RapidOCR can be slower on large images, and the Render free tier can add performance and memory constraints during OCR runs. Those limits would be reduced in a less restricted environment with more CPU and memory headroom.
 
-The /verify endpoint uses RapidOCR to scan uploaded label images.
-
-Memory mode configuration:
-
-	OCR_MAX_SIDE=1024 # optional, downscale long edge before OCR to reduce peak memory
-
-For Render free-tier services, lower OCR_MAX_SIDE (for example 896 or 768) if memory pressure continues.
-
-Install dependencies:
-
-	python -m pip install -r requirements.txt
-
-If OCR cannot detect text from an uploaded image, the API returns HTTP 400.
+If OCR cannot detect text from an uploaded image, the API returns HTTP 400. 
 If OCR dependencies are missing or OCR processing fails, the API returns HTTP 500.
