@@ -57,7 +57,6 @@
                 <th>Status</th>
                 <th>Comparison</th>
                 <th title="Format: field: status (score) [method]">Checks</th>
-                <th title="Concise advice for likely missing label items">Missing Items Advice</th>
                 <th>Mismatches</th>
             </tr>
         </thead>
@@ -100,22 +99,6 @@
                 checkLines.push(`${check.field}: ${check.status} (${scoreText}) [${methodText}]`);
             }
 
-            const advice = (c.missing_items_advice || []).map((item) => {
-                const status = String(item.status || '').toLowerCase();
-                const label = String(item.label || '-');
-                let klass = 'advice-na';
-                let text = label;
-
-                if (status === 'missing') {
-                    klass = 'advice-missing';
-                } else if (status === 'check') {
-                    klass = 'advice-check';
-                    text = `(${label})`;
-                }
-
-                return `<span class="${klass}">${escapeHtml(text)}</span>`;
-            }).join('');
-
             const comparisonHtml = `
                 <div class="comparison">
                     <div>
@@ -134,7 +117,6 @@
                 <td class="${c.passed ? 'ok' : 'bad'}">${c.passed ? 'PASS' : 'FAIL'}</td>
                 <td>${comparisonHtml}</td>
                 <td><pre style="margin:0;" title="field: status (score) [method]">${escapeHtml(checkLines.join('\n') || '-')}</pre></td>
-                <td><div class="advice">${advice || '<span class="advice-na">No Advice</span>'}</div></td>
                 <td><pre style="margin:0;">${escapeHtml(mismatches)}</pre></td>
             `;
             rows.appendChild(tr);
