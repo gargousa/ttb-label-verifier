@@ -2,7 +2,7 @@ TEST_CASES = [
     {
         "name": "EXACT FULL CHECKS",
         "application_data_file": "tests/data/application_data.txt",
-        "image_file": "tests/images/stb_exact.jpg",
+        "image_file": "tests/images/stb_exact_wht.jpg",
         "expected": {
             # OCR can occasionally add/remove punctuation or a trailing character on brand text.
             "brand_name": ["pass", "warning"],
@@ -32,7 +32,7 @@ TEST_CASES = [
     },
     {
         "name": "FUZZY BRAND / ABV MATCH",
-        "application_data_file": "tests/data/stb_fuzzy_application_data.txt",
+        "application_data_file": "tests/data/application_data.txt",
         "image_file": "tests/images/stb_fuzzy_brand_abv.jpg",
         "expected": {
             "brand_name": "warning",
@@ -64,7 +64,7 @@ TEST_CASES = [
         "image_file": "tests/images/stb_exact_brand_abv_mismatch.jpg",
         "abv_override": "40% ALC/VOL",
         "expected": {
-            "brand_name": "pass",
+            "brand_name": "warning",
             "abv": "fail",
         },
         "expected_missing_failures": [

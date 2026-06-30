@@ -103,6 +103,7 @@ def _run_single_case(
                 "field": item.get("field"),
                 "status": item.get("status"),
                 "score": item.get("score"),
+                "match_method": item.get("match_method"),
             }
             for item in results
         ],

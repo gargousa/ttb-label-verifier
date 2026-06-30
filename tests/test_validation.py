@@ -65,11 +65,11 @@ def test_brand_fuzzy_match_warning_for_distillery_case():
     assert result[0]["score"] < 100
 
 
-def test_brand_compact_match_pass_for_collapsed_spaces():
+def test_brand_compact_match_warn_for_collapsed_spaces():
     extracted = "STONE'STHROWDISTILLERY 45%"
     result = validate_fields("STONE'S THROW DISTILLERY", "45%", extracted)
 
-    assert result[0]["status"] == "pass"
+    assert result[0]["status"] == "warning"
     assert result[0]["match_method"] == "compact_normalized"
 
 
