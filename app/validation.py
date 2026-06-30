@@ -165,8 +165,8 @@ def validate_fields(expected_brand, expected_abv, extracted_text, expected_class
             brand_match_method = "normalized_phrase"
         elif len(expected_brand_compact) >= 12 and compact_brand_match(expected_brand_compact, extracted_text):
             # OCR may collapse spaces/punctuation for long names (e.g. STONE'STHROWDISTILLERY).
-            status = "pass"
-            score = 100
+            status = "warning"
+            score = 99
             brand_match_method = "compact_normalized"
         else:
             score = int(round(max(

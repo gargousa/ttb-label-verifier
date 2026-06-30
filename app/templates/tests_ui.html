@@ -75,7 +75,8 @@
             const checkLines = [];
             for (const check of (c.checks || [])) {
                 const scoreText = check.score == null ? '-' : check.score;
-                checkLines.push(`${check.field}: ${check.status} (${scoreText})`);
+                const methodText = check.match_method || '-';
+                checkLines.push(`${check.field}: ${check.status} (${scoreText}) [${methodText}]`);
             }
 
             const comparisonHtml = `
