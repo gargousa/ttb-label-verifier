@@ -26,6 +26,24 @@ def test_index_ui_page_available():
     assert "/tests/ui" in response.text
 
 
+def test_tests_ui_stream_endpoint(monkeypatch):
+    def fake_iter_local_test_cases(image_path=None):
+        yield {
+            "type": "done",
+            "ok": True,
+            "passed": 1,
+            "failed": 0,
+            "total": 1,
+        }
+
+    monkeypatch.setattr(main, "iter_local_test_cases", fake_iter_local_test_cases)
+
+    response = client.get("/tests/ui/run/stream")
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers.get("content-type", "")
+    assert "event: done" in response.text
+
+
 def test_checks_endpoint():
     response = client.get("/checks")
 

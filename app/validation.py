@@ -93,6 +93,26 @@ def normalize_brand_compact(text):
     return re.sub(r"[^a-z0-9]+", "", text.lower())
 
 
+def compact_brand_match(expected_compact, extracted_text):
+    """Match compact brand only when surrounding chars are non-letters (spacing/punctuation collapse)."""
+    for line in extracted_text.splitlines():
+        compact_line = normalize_brand_compact(line)
+        if not compact_line:
+            continue
+
+        idx = compact_line.find(expected_compact)
+        if idx == -1:
+            continue
+
+        left = compact_line[:idx]
+        right = compact_line[idx + len(expected_compact):]
+        # Allow only numeric/noise around the compact brand; extra letters should fall through to fuzzy.
+        if not re.search(r"[a-z]", left + right):
+            return True
+
+    return False
+
+
 def normalize_net_contents(text):
     """Extract net contents value + unit from OCR text (e.g. 750 ML, 1.75 L)."""
     match = re.search(
@@ -123,11 +143,13 @@ def validate_fields(expected_brand, expected_abv, extracted_text, expected_class
 
     extracted_lower = extracted_text.lower()
     expected_brand_lower = expected_brand.lower()
+    brand_match_method = "fuzzy"
 
     # --- Brand Name Matching ---
     if expected_brand_lower in extracted_lower:
         status = "pass"
         score = 100
+        brand_match_method = "exact_substring"
     else:
         expected_brand_normalized = normalize_brand_text(expected_brand)
         extracted_normalized = normalize_brand_text(extracted_text)
@@ -140,10 +162,12 @@ def validate_fields(expected_brand, expected_abv, extracted_text, expected_class
         ):
             status = "pass"
             score = 100
-        elif len(expected_brand_compact) >= 12 and expected_brand_compact in extracted_compact:
+            brand_match_method = "normalized_phrase"
+        elif len(expected_brand_compact) >= 12 and compact_brand_match(expected_brand_compact, extracted_text):
             # OCR may collapse spaces/punctuation for long names (e.g. STONE'STHROWDISTILLERY).
             status = "pass"
             score = 100
+            brand_match_method = "compact_normalized"
         else:
             score = int(round(max(
                 fuzz.partial_ratio(expected_brand_lower, extracted_lower),
@@ -159,7 +183,8 @@ def validate_fields(expected_brand, expected_abv, extracted_text, expected_class
     results.append({
         "field": "brand_name",
         "status": status,
-        "score": score
+        "score": score,
+        "match_method": brand_match_method,
     })
 
     # --- ABV Matching (strict for now) ---
@@ -187,6 +212,7 @@ def validate_fields(expected_brand, expected_abv, extracted_text, expected_class
     abv_score, abv_delta = compute_abv_score(expected_val, detected_value)
 
     abv_status = "pass" if abv_match else "fail"
+    abv_match_method = detected_source or "not_detected"
 
 
     results.append({
@@ -198,29 +224,41 @@ def validate_fields(expected_brand, expected_abv, extracted_text, expected_class
         "detected_proof": extracted_proof,
         "detected_source": detected_source,
         "delta": abv_delta,
+        "match_method": abv_match_method,
     })
 
     # --- Class/Type Matching ---
     class_type_expected = (expected_class_type or "").strip()
     class_type_detected = None
+    class_type_match_method = "fuzzy"
 
     if not class_type_expected:
         class_type_status = "fail"
         class_type_score = 0
+        class_type_match_method = "no_expected"
     else:
         expected_class_lower = class_type_expected.lower()
         extracted_lower = extracted_text.lower()
         expected_class_normalized = normalize_brand_text(class_type_expected)
         extracted_normalized = normalize_brand_text(extracted_text)
+        expected_class_compact = normalize_brand_compact(class_type_expected)
+        extracted_class_compact = normalize_brand_compact(extracted_text)
 
         if expected_class_lower in extracted_lower:
             class_type_status = "pass"
             class_type_score = 100
             class_type_detected = class_type_expected
+            class_type_match_method = "exact_substring"
         elif re.search(rf"\b{re.escape(expected_class_normalized)}\b", extracted_normalized):
             class_type_status = "pass"
             class_type_score = 100
             class_type_detected = class_type_expected
+            class_type_match_method = "normalized_phrase"
+        elif len(expected_class_compact) >= 12 and expected_class_compact in extracted_class_compact:
+            class_type_status = "pass"
+            class_type_score = 100
+            class_type_detected = class_type_expected
+            class_type_match_method = "compact_normalized"
         else:
             class_type_score = int(round(max(
                 fuzz.partial_ratio(expected_class_lower, extracted_lower),
@@ -239,6 +277,7 @@ def validate_fields(expected_brand, expected_abv, extracted_text, expected_class
         "score": class_type_score,
         "expected": class_type_expected or None,
         "detected": class_type_detected,
+        "match_method": class_type_match_method,
     })
 
     # --- Net Contents / Volume Matching ---
@@ -251,6 +290,7 @@ def validate_fields(expected_brand, expected_abv, extracted_text, expected_class
         "status": net_contents_status,
         "score": net_contents_score,
         "detected": detected_net_contents,
+        "match_method": "regex_detected" if detected_net_contents else "not_detected",
     })
 
     return results

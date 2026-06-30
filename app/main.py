@@ -1,17 +1,18 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 import shutil
 import os
+import json
 from pathlib import Path
 
 try:
     from app.validation import validate_fields, get_supported_checks, get_missing_fields
     from app.ocr import extract_text_from_image
-    from app.test_runner import run_local_test_cases
+    from app.test_runner import run_local_test_cases, iter_local_test_cases
 except ModuleNotFoundError:
     from validation import validate_fields, get_supported_checks, get_missing_fields
     from ocr import extract_text_from_image
-    from test_runner import run_local_test_cases
+    from test_runner import run_local_test_cases, iter_local_test_cases
 
 app = FastAPI()
 
@@ -83,6 +84,25 @@ def tests_ui_run(payload: dict | None = None):
     payload = payload or {}
     image_path = payload.get("image_path")
     return run_local_test_cases(image_path=image_path)
+
+
+@app.get("/tests/ui/run/stream")
+def tests_ui_run_stream(image_path: str | None = None):
+    def _event_stream():
+        for event in iter_local_test_cases(image_path=image_path):
+            event_type = event.get("type", "message")
+            payload = json.dumps(event)
+            yield f"event: {event_type}\n"
+            yield f"data: {payload}\n\n"
+
+    return StreamingResponse(
+        _event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/ui/verify")

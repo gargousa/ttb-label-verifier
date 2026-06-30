@@ -86,6 +86,14 @@ def _normalize_status(raw_check):
     return None
 
 
+def _expected_status_values(expected_status):
+    if isinstance(expected_status, (list, tuple, set)):
+        return [str(item).strip().lower() for item in expected_status if str(item).strip()]
+    if expected_status is None:
+        return []
+    return [str(expected_status).strip().lower()]
+
+
 def _extract_abv_numeric(text):
     match = re.search(r"(\d{1,2}(?:\.\d+)?)", str(text))
     if match:
@@ -294,9 +302,11 @@ def run_test_case(test_case, url, timeout_seconds, verify_ssl, retries, file_fie
     mismatches = []
     for field, expected_status in expected.items():
         actual_status = actual_status_by_field.get(field)
-        if actual_status != expected_status:
+        acceptable_statuses = _expected_status_values(expected_status)
+        if actual_status not in acceptable_statuses:
+            expected_display = " or ".join(f"'{status}'" for status in acceptable_statuses) if acceptable_statuses else "<none>"
             mismatches.append(
-                f"{field} expected '{expected_status}' but got '{actual_status}'"
+                f"{field} expected {expected_display} but got '{actual_status}'"
             )
 
     expected_missing = test_case.get("expected_missing_failures", [])
