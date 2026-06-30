@@ -5,5 +5,4 @@ pytest
 httpx
 rapidfuzz
 requests
-easyocr
 rapidocr-onnxruntime
